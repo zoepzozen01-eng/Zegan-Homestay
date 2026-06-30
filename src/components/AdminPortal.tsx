@@ -16,6 +16,7 @@ import {
 } from '../services/adminService';
 import { ROOMS } from '../data';
 import InvoicePDF from './InvoicePDF';
+import { supabase } from '../lib/supabase';
 
 interface AdminPortalProps {
   lang: 'id' | 'en';
@@ -62,34 +63,113 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   const [offlineName, setOfflineName] = useState('');
   const [offlineEmail, setOfflineEmail] = useState('');
   const [offlinePhone, setOfflinePhone] = useState('');
-  const [offlineRoomNum, setOfflineRoomNum] = useState('A-1');
+  const [offlineRoomNum, setOfflineRoomNum] = useState('1');
   const [offlineCheckIn, setOfflineCheckIn] = useState('');
   const [offlineCheckOut, setOfflineCheckOut] = useState('');
   const [offlineGuests, setOfflineGuests] = useState(2);
   const [offlineNotes, setOfflineNotes] = useState('');
   const [offlinePriceOverride, setOfflinePriceOverride] = useState('');
 
-  // List of 8 rooms as requested
-  const calendarRoomsList = [
-    { number: 'A-1', type: 'Joglo Deluxe Room', id: 'deluxe', status: 'normal' },
-    { number: 'A-2', type: 'Joglo Deluxe Room', id: 'deluxe', status: 'normal' },
-    { number: 'B-1', type: 'Lumbung Ekonomi Room', id: 'ekonomi', status: 'normal' },
-    { number: 'B-2', type: 'Lumbung Ekonomi Room', id: 'ekonomi', status: 'normal' },
-    { number: 'C-1', type: 'Standard Suite Room', id: 'standard', status: 'normal' },
-    { number: 'C-2', type: 'Standard Suite Room', id: 'standard', status: 'normal' },
-    { number: 'D-1', type: 'Family Suite Room', id: 'family', status: 'normal' },
-    { number: 'D-2', type: 'VIP Pavilion Room', id: 'vip', status: 'maintenance' } // Explicitly maintenance to demonstrate Grey box
-  ];
+  // Physical rooms loaded from database
+  const [dbRooms, setDbRooms] = useState<any[]>([
+    { id: '6382483d-4498-4485-b9f5-da418b7c24f5', number: '1', type: 'Standard Room Utama', status: 'Available', room_type_id: 'b3daf9eb-8af2-40ff-86a8-e3e94e8149e5' },
+    { id: '7793c710-ba72-4866-b59c-20aee507a5c9', number: '2', type: 'Standard Room Utama', status: 'Available', room_type_id: 'b3daf9eb-8af2-40ff-86a8-e3e94e8149e5' },
+    { id: 'cda230a5-0c0c-46f5-bd3a-40ed15ec4862', number: '3', type: 'Standard Room Pratama', status: 'Available', room_type_id: '573c09f7-546f-452e-9fda-4ebf2d6ab77b' },
+    { id: '3dc9da2d-38e4-45e2-bc3d-e68881d50daa', number: '4', type: 'Standard Room Madya', status: 'Available', room_type_id: '2332632b-0ec0-4906-a6e1-68a518605c09' },
+    { id: '06daf026-6833-4bb0-b9fc-608a02f90784', number: '5', type: 'Standard Room Pratama', status: 'Available', room_type_id: '573c09f7-546f-452e-9fda-4ebf2d6ab77b' },
+    { id: 'bc8edfa0-b150-42aa-8874-a7c466fe3602', number: '6', type: 'Family Room', status: 'Available', room_type_id: '63a30aee-0c4b-49ce-8c5e-7ff4c9077481' },
+    { id: 'd2471912-9486-483b-b01c-64cb5e6dc148', number: '7', type: 'Economy Room', status: 'Available', room_type_id: '90ced547-d6b1-4089-9617-8972d45a5ad3' },
+    { id: '951a1d18-1908-4b67-9fd0-f2895f1d4928', number: '8', type: 'Economy Room', status: 'Available', room_type_id: '90ced547-d6b1-4089-9617-8972d45a5ad3' },
+    { id: 'd3296e6b-a5c5-4db5-ac9a-81664eb41d36', number: 'Rumah-1', type: 'Rumah', status: 'Available', room_type_id: 'e8f31a0b-052a-4b29-8a93-06e8013fa623' }
+  ]);
 
-  // Helper to map room_id to base price
-  const getRoomBasePrice = (roomId: string) => {
-    switch (roomId) {
-      case 'deluxe': return 450000;
-      case 'ekonomi': return 250000;
-      case 'standard': return 350000;
-      case 'family': return 600000;
-      case 'vip': return 800000;
-      default: return 300000;
+  const calendarRoomsList = dbRooms;
+
+  // Fetch rooms from Supabase
+  const fetchDbRooms = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('id, room_number, status, room_type_id, room_types(name)')
+        .order('room_number', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        const mapped = data.map((r: any) => ({
+          id: r.id,
+          number: r.room_number,
+          type: r.room_types?.name || 'Unknown Room',
+          status: r.status,
+          room_type_id: r.room_type_id
+        }));
+        
+        // Custom sorting to make sure numeric order works and Rumah-1 is at the end
+        mapped.sort((a: any, b: any) => {
+          if (a.number.includes('Rumah') && !b.number.includes('Rumah')) return 1;
+          if (!a.number.includes('Rumah') && b.number.includes('Rumah')) return -1;
+          return a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        setDbRooms(mapped);
+      }
+    } catch (err) {
+      console.error('Error fetching rooms from database:', err);
+    }
+  };
+
+  // Helper to map room type name to base price
+  const getRoomBasePrice = (roomType: string) => {
+    switch (roomType) {
+      case 'Standard Room Utama': return 200000;
+      case 'Standard Room Madya': return 175000;
+      case 'Standard Room Pratama': return 150000;
+      case 'Family Room': return 200000;
+      case 'Economy Room': return 125000;
+      case 'Rumah': return 700000;
+      default: return 150000;
+    }
+  };
+
+  // Manual status override toggler
+  const handleManualStatusToggle = async (roomObj: any) => {
+    try {
+      const newStatus = roomObj.status === 'Available' ? 'Occupied' : 'Available';
+
+      // Update in Supabase
+      const { error } = await supabase
+        .from('rooms')
+        .update({ status: newStatus })
+        .eq('id', roomObj.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Log activity
+      logActivity(
+        adminName,
+        currentRole,
+        `Mengubah status Kamar No. ${roomObj.number} secara manual menjadi ${newStatus === 'Available' ? 'Kosong (Available)' : 'Terisi (Occupied)'}`
+      );
+
+      // Refresh room list state immediately
+      await fetchDbRooms();
+
+      // Update active selected room state so popup drawer updates immediately too
+      setSelectedCalendarRoom((prev: any) => {
+        if (!prev) return null;
+        const updatedRoom = { ...prev.room, status: newStatus };
+        return {
+          ...prev,
+          room: updatedRoom,
+          statusInfo: getRoomColorStatus(updatedRoom)
+        };
+      });
+
+    } catch (err: any) {
+      console.error('Error toggling room status:', err);
     }
   };
 
@@ -102,11 +182,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       const nights = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
       const roomObj = calendarRoomsList.find(r => r.number === offlineRoomNum);
       if (roomObj) {
-        const pricePerNight = getRoomBasePrice(roomObj.id);
+        const pricePerNight = getRoomBasePrice(roomObj.type);
         setOfflinePriceOverride(String(pricePerNight * nights));
       }
     }
-  }, [offlineCheckIn, offlineCheckOut, offlineRoomNum]);
+  }, [offlineCheckIn, offlineCheckOut, offlineRoomNum, dbRooms]);
 
   // Sync tab with props
   useEffect(() => {
@@ -180,10 +260,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   useEffect(() => {
     loadData();
     checkBookingExpirations();
+    fetchDbRooms();
   }, []);
 
   const refreshWorkspace = () => {
     loadData();
+    fetchDbRooms();
   };
 
   // Admin Actions: Konfirmasi Lunas
@@ -420,31 +502,20 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     const todayStr = new Date().toISOString().substring(0, 10);
     return bookings.find(b => {
       if (b.status === 'Cancelled' || b.status === 'Expired') return false;
-      const isMyRoomNum = b.room_number === roomNumber || (!b.room_number && roomNumber === 'A-1');
+      const isMyRoomNum = b.room_number === roomNumber || (!b.room_number && roomNumber === '1');
       const isDateInRange = todayStr >= b.check_in && todayStr < b.check_out;
       return isMyRoomNum && isDateInRange;
     }) || null;
   };
 
   // Get color status metadata for a room
-  const getRoomColorStatus = (room: typeof calendarRoomsList[0]) => {
-    if (room.status === 'maintenance') {
-      return { status: 'Maintenance', color: 'bg-stone-500 text-stone-100 ring-stone-600', label: lang === 'id' ? 'Maintenance' : 'Maintenance' };
+  const getRoomColorStatus = (room: any) => {
+    const isAvailable = String(room.status).toLowerCase() === 'available';
+    if (isAvailable) {
+      return { status: 'Available', color: 'bg-emerald-600 text-emerald-50 ring-emerald-700', label: lang === 'id' ? 'Kosong' : 'Available' };
+    } else {
+      return { status: 'Occupied', color: 'bg-rose-600 text-rose-50 ring-rose-700', label: lang === 'id' ? 'Terisi' : 'Occupied' };
     }
-    
-    const b = getRoomActiveBooking(room.number);
-    if (!b) {
-      return { status: 'Kosong', color: 'bg-emerald-600 text-emerald-50 ring-emerald-700', label: lang === 'id' ? 'Kosong' : 'Available' };
-    }
-    
-    const todayStr = new Date().toISOString().substring(0, 10);
-    if (b.status === 'Checked In') {
-      return { status: 'Occupied', color: 'bg-blue-600 text-blue-50 ring-blue-700', label: lang === 'id' ? 'Sedang Ditempati' : 'Occupied', booking: b };
-    }
-    if (b.check_in === todayStr) {
-      return { status: 'CheckInToday', color: 'bg-amber-500 text-amber-950 ring-amber-600', label: lang === 'id' ? 'Check In Hari Ini' : 'Check In Today', booking: b };
-    }
-    return { status: 'Booked', color: 'bg-rose-600 text-rose-50 ring-rose-700', label: lang === 'id' ? 'Sudah Dibooking' : 'Booked Out', booking: b };
   };
 
   // Dashboard Stats Calculations
@@ -677,14 +748,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                   <span className="font-bold">{lang === 'id' ? 'Laporan (Owner Only)' : 'Reports (Owner Only)'}</span>
                 </button>
               </div>
-            </div>
-
-            {/* Real-time Room Grid: 8 Kotak Kamar */}
+                        {/* Real-time Room Grid */}
             <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
               <div className="flex justify-between items-center border-b pb-3 flex-wrap gap-2">
                 <div>
                   <h3 className="font-serif font-bold text-brand-950 text-base">
-                    {lang === 'id' ? '8 Kotak Kamar Zegan Homestay' : 'Zegan Homestay 8 Room Grid'}
+                    {lang === 'id' ? 'Kotak Status Kamar Real-time' : 'Real-time Room Status Grid'}
                   </h3>
                   <p className="text-xs text-stone-500 mt-0.5">
                     {lang === 'id' ? 'Kondisi dan status keterisian real-time hari ini.' : 'Real-time room occupancy status today.'}
@@ -701,18 +770,14 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
 
               {/* Legend */}
               <div className="flex flex-wrap gap-3 text-[10px] font-bold uppercase tracking-wider text-stone-600">
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-600 rounded-sm"></span><span>Kosong</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-rose-600 rounded-sm"></span><span>Dipesan</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-amber-500 rounded-sm"></span><span>Check In Hari Ini</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-blue-600 rounded-sm"></span><span>Sedang Ditempati</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-stone-500 rounded-sm"></span><span>Maintenance</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-600 rounded-sm"></span><span>{lang === 'id' ? 'Kosong (Available)' : 'Available'}</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-rose-600 rounded-sm"></span><span>{lang === 'id' ? 'Terisi (Occupied)' : 'Occupied'}</span></div>
               </div>
 
-              {/* The 8 Room Boxes */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-5 pt-2">
+              {/* The Room Boxes */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
                 {calendarRoomsList.map((room) => {
                   const statusInfo = getRoomColorStatus(room);
-                  const isMaintenance = room.status === 'maintenance';
                   const activeBooking = getRoomActiveBooking(room.number);
 
                   return (
@@ -747,21 +812,21 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             <span className="text-[10px] font-bold block truncate">
                               👤 {activeBooking.full_name}
                             </span>
-                            <span className="text-[8.5px] opacity-90 block font-mono">
+                            <span className="text-[8.5px] opacity-90 block font-mono font-medium">
                               📅 In: {activeBooking.check_in}
                             </span>
                           </div>
-                        ) : isMaintenance ? (
-                          <span className="text-[10px] italic font-light opacity-80">Maintenance</span>
                         ) : (
-                          <span className="text-[10px] italic font-light opacity-90">Ready / Kosong</span>
+                          <span className="text-[10px] italic font-light opacity-90">
+                            {room.status === 'Available' ? (lang === 'id' ? 'Siap huni / kosong' : 'Ready / Kosong') : (lang === 'id' ? 'Terisi (Occupied)' : 'Occupied')}
+                          </span>
                         )}
                       </div>
                     </motion.button>
                   );
                 })}
               </div>
-            </div>
+            </div>        </div>
 
             {/* Split Row for Booking Hari Ini, Menunggu Verifikasi */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1040,7 +1105,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           </div>
         )}
 
-        {/* SUBVIEW 3: KALENDER KAMAR GRID (8 BOXES) */}
+        {/* SUBVIEW 3: KALENDER KAMAR GRID */}
         {activeTab === 'calendar' && (
           <div className="space-y-6 animate-fadeIn">
             <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
@@ -1051,19 +1116,15 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                 </div>
                 {/* Legenda warna */}
                 <div className="flex flex-wrap gap-3 text-[10px] font-bold uppercase tracking-wider text-stone-600">
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-600 rounded-sm"></span><span>Kosong</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-rose-600 rounded-sm"></span><span>Dipesan</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-amber-500 rounded-sm"></span><span>Check In Hari Ini</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-blue-600 rounded-sm"></span><span>Sedang Ditempati</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-stone-500 rounded-sm"></span><span>Maintenance</span></div>
+                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-600 rounded-sm"></span><span>{lang === 'id' ? 'Kosong (Available)' : 'Available'}</span></div>
+                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-rose-600 rounded-sm"></span><span>{lang === 'id' ? 'Terisi (Occupied)' : 'Occupied'}</span></div>
                 </div>
               </div>
 
-              {/* 8 BIG BOXES */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-2">
+              {/* 9 BIG BOXES */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-2">
                 {calendarRoomsList.map((room) => {
                   const statusInfo = getRoomColorStatus(room);
-                  const isMaintenance = room.status === 'maintenance';
                   const activeBooking = getRoomActiveBooking(room.number);
 
                   return (
@@ -1104,10 +1165,10 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                               📅 In: {activeBooking.check_in}
                             </span>
                           </div>
-                        ) : isMaintenance ? (
-                          <span className="text-[11px] italic font-light opacity-80">Kamar dinonaktifkan</span>
                         ) : (
-                          <span className="text-[11px] italic font-light opacity-85">Siap huni / kosong</span>
+                          <span className="text-[11px] italic font-light opacity-85">
+                            {room.status === 'Available' ? (lang === 'id' ? 'Siap huni / kosong' : 'Ready / Kosong') : (lang === 'id' ? 'Terisi (Occupied)' : 'Occupied')}
+                          </span>
                         )}
                       </div>
                     </motion.button>
@@ -1171,8 +1232,8 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                     className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 bg-white"
                   >
                     {calendarRoomsList.map(r => (
-                      <option key={r.number} value={r.number} disabled={r.status === 'maintenance'}>
-                        {r.number} - {r.type} {r.status === 'maintenance' ? '(Maintenance)' : ''}
+                      <option key={r.number} value={r.number}>
+                        {r.number} - {r.type} ({r.status === 'Available' ? (lang === 'id' ? 'Kosong' : 'Available') : (lang === 'id' ? 'Terisi' : 'Occupied')})
                       </option>
                     ))}
                   </select>
@@ -1777,13 +1838,6 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                       </div>
                     </div>
                   )
-                ) : selectedCalendarRoom.room.status === 'maintenance' ? (
-                  <div className="py-8 text-center space-y-3">
-                    <p className="text-sm font-semibold text-stone-500">Kamar dalam masa perbaikan dan pemeliharaan (Maintenance).</p>
-                    <span className="inline-block px-3 py-1 bg-stone-100 border text-stone-500 text-[10px] font-bold uppercase tracking-widest rounded-full">
-                      Mulai: Hari Ini
-                    </span>
-                  </div>
                 ) : (
                   <div className="py-8 text-center space-y-4">
                     <p className="text-sm font-semibold text-emerald-600">Unit Kamar kosong dan siap dipesan sekarang juga.</p>
@@ -1799,6 +1853,35 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                     </button>
                   </div>
                 )}
+
+                {/* Manual Room Status Override Section */}
+                <div className="border-t border-stone-200 pt-4 mt-4 space-y-3 bg-stone-50 p-4 rounded-xl">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="text-xs font-bold text-stone-800">Ubah Status Kamar Manual</h4>
+                      <p className="text-[10px] text-stone-500">Gunakan untuk memblokir/membuka kamar di luar sistem booking.</p>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase ${
+                      selectedCalendarRoom.room.status === 'Available' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {selectedCalendarRoom.room.status === 'Available' ? 'KOSONG / AVAILABLE' : 'TERISI / OCCUPIED'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleManualStatusToggle(selectedCalendarRoom.room)}
+                    className={`w-full py-2.5 px-4 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
+                      selectedCalendarRoom.room.status === 'Available' 
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>
+                      {selectedCalendarRoom.room.status === 'Available' ? 'Tandai Sebagai TERISI (Occupied)' : 'Tandai Sebagai KOSONG (Available)'}
+                    </span>
+                  </button>
+                </div>
 
               </div>
             </motion.div>
