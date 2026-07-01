@@ -73,7 +73,7 @@ export function makeQrisDynamic(payload: string, amount: number): string {
   const tags = parseQrisPayload(payload);
   if (amount && amount > 0) {
     tags['54'] = Math.round(amount).toString();
-    tags['01'] = '12'; // Set point of initiation method to 12 (Dynamic QR)
+    tags['01'] = '11'; // Keep as '11' (Static QR) so that banks scan it as a standard static merchant, but with a pre-filled amount tag '54'!
   } else {
     tags['01'] = '11'; // Static QR
     delete tags['54'];
