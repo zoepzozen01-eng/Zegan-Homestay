@@ -2,7 +2,7 @@ import { QrisSettings, WhatsappSettings, ActivityLog, Booking } from '../types';
 
 // Constants for default settings
 export const DEFAULT_QRIS_SETTINGS: QrisSettings = {
-  imageUrl: '/src/assets/images/qris-full.png',
+  imageUrl: '/qris-full.png',
   bankName: 'QRIS Nasional (GPN)',
   accountName: 'ZEGAN HOMESTAY',
   instructions: 'Silakan scan QRIS di atas menggunakan e-wallet (GoPay, OVO, Dana, ShopeePay, LinkAja) atau Mobile Banking Anda. Masukkan nominal pembayaran tepat sesuai dengan total tagihan, lalu simpan bukti transfer untuk diunggah.'
@@ -92,24 +92,9 @@ export function makeQrisDynamic(payload: string, amount: number): string {
   const crc = getCrc16(reconstructed);
   return reconstructed + crc;
 }
-
 export function getDynamicQrisImageUrl(amount: number): string {
-  const qris = getQrisSettings();
-  let basePayload = '';
-  try {
-    const url = new URL(qris.imageUrl);
-    basePayload = url.searchParams.get('data') || '';
-  } catch (e) {
-    basePayload = qris.imageUrl;
-  }
-
-  // Fallback to Zegan Homestay static payload if parsed payload is invalid/missing
-  if (!basePayload || basePayload.length < 20) {
-    basePayload = '00020101021126660014ID.CO.QRIS.WWW01189360011210254012390215ID10254012392940303A015204701153033605802ID5914ZEGAN HOMESTAY6006Sleman61055518462070703A016304A9A2';
-  }
-
-  const dynamicPayload = makeQrisDynamic(basePayload, amount);
   return '/qris-full.png';
+}
 
 // WhatsApp Settings
 export function getWhatsappSettings(): WhatsappSettings {
