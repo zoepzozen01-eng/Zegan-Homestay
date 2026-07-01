@@ -2,7 +2,7 @@ import { QrisSettings, WhatsappSettings, ActivityLog, Booking } from '../types';
 
 // Constants for default settings
 export const DEFAULT_QRIS_SETTINGS: QrisSettings = {
-  imageUrl: '/qris-full.png',
+  imageUrl: '/src/assets/images/qris-full.png',
   bankName: 'QRIS Nasional (GPN)',
   accountName: 'ZEGAN HOMESTAY',
   instructions: 'Silakan scan QRIS di atas menggunakan e-wallet (GoPay, OVO, Dana, ShopeePay, LinkAja) atau Mobile Banking Anda. Masukkan nominal pembayaran tepat sesuai dengan total tagihan, lalu simpan bukti transfer untuk diunggah.'
