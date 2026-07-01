@@ -15,6 +15,7 @@ import Footer from './components/Footer';
 import CustomerPortal from './components/CustomerPortal';
 import AdminPortal from './components/AdminPortal';
 import StaffLogin from './components/StaffLogin';
+import ServiceSignals from './components/ServiceSignals';
 
 export default function App() {
   const [lang, setLang] = useState<Language>('id');
@@ -117,6 +118,15 @@ export default function App() {
 
   // Determine if we are on a protected staff path
   const isProtectedPath = ['/dashboard', '/admin', '/reports', '/settings', '/calendar'].includes(path);
+
+  if (path === '/service-signals' || path === '/sinyal') {
+    return (
+      <ServiceSignals
+        lang={lang}
+        onGoHome={() => navigateTo('/')}
+      />
+    );
+  }
 
   if (path === '/staff-login') {
     return (

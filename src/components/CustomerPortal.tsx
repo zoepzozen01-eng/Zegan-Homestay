@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Search, Calendar, Users, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, ArrowRight, Upload, Check, CreditCard, ExternalLink, Image as ImageIcon } from 'lucide-react';
-import { Booking, BookingStatus, PaymentStatus } from '../types';
-import { getQrisSettings, getWhatsappSettings, logActivity } from '../services/adminService';
+import { Search, Calendar, Users, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, ArrowRight, Upload, Check, CreditCard, ExternalLink, Image as ImageIcon, Coffee, Minus, Plus, Send, Sparkles, MessageSquare } from 'lucide-react';
+import { Booking, BookingStatus, PaymentStatus, ServiceSignal } from '../types';
+import { getQrisSettings, getWhatsappSettings, logActivity, getDynamicQrisImageUrl } from '../services/adminService';
+import { CAFE_ITEMS } from '../data';
 import InvoicePDF from './InvoicePDF';
 
 interface CustomerPortalProps {
@@ -18,6 +19,160 @@ export default function CustomerPortal({ lang }: CustomerPortalProps) {
   const [uploadingCode, setUploadingCode] = useState<string | null>(null);
   const [uploadedProof, setUploadedProof] = useState<string | null>(null);
   const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<Booking | null>(null);
+
+  // States for live service signals & food orders
+  const [activeActionTab, setActiveActionTab] = useState<{[code: string]: 'none' | 'food' | 'service'}>({});
+  const [foodQuantities, setFoodQuantities] = useState<{[code_itemId: string]: number}>({});
+  const [customRequests, setCustomRequests] = useState<{[code: string]: string}>({});
+  const [successNotification, setSuccessNotification] = useState<{[code: string]: string}>({});
+
+  // Live tracking states for signals and notifications
+  const [trackedSignals, setTrackedSignals] = useState<ServiceSignal[]>([]);
+  const [foodNotifications, setFoodNotifications] = useState<any[]>([]);
+
+  const loadTrackedSignalsAndNotifications = () => {
+    try {
+      const rawSignals = localStorage.getItem('zegan_service_signals') || '[]';
+      const parsedSignals: ServiceSignal[] = JSON.parse(rawSignals);
+      setTrackedSignals(parsedSignals);
+
+      const rawNotifs = localStorage.getItem('zegan_food_notifications') || '[]';
+      const parsedNotifs = JSON.parse(rawNotifs);
+      setFoodNotifications(parsedNotifs);
+    } catch (err) {
+      console.error('Error loading signals/notifs:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadTrackedSignalsAndNotifications();
+
+    // Listen to storage event (updates from Staff Sinyal tab)
+    const handleStorageChange = () => {
+      loadTrackedSignalsAndNotifications();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Fallback polling for real-time responsiveness
+    const interval = setInterval(loadTrackedSignalsAndNotifications, 3000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleFoodOrderSubmit = (booking: Booking) => {
+    const orderItems: string[] = [];
+    CAFE_ITEMS.forEach(item => {
+      const qty = foodQuantities[`${booking.booking_code}_${item.id}`] || 0;
+      if (qty > 0) {
+        orderItems.push(`${qty}x ${item.name}`);
+      }
+    });
+
+    if (orderItems.length === 0) {
+      alert(lang === 'id' ? 'Silakan pilih minimal 1 item menu makanan/minuman.' : 'Please select at least 1 food or beverage item.');
+      return;
+    }
+
+    const detailsStr = orderItems.join(', ');
+
+    const newSignal: ServiceSignal = {
+      id: `customer-sig-${Date.now()}`,
+      booking_code: booking.booking_code,
+      room_number: booking.room_number || '101',
+      guest_name: booking.full_name,
+      type: 'food',
+      details: detailsStr,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const raw = localStorage.getItem('zegan_service_signals') || '[]';
+      const existing: ServiceSignal[] = JSON.parse(raw);
+      existing.push(newSignal);
+      localStorage.setItem('zegan_service_signals', JSON.stringify(existing));
+
+      logActivity(
+        'Customer',
+        'Customer',
+        `Tamu ${booking.full_name} (Kamar ${booking.room_number || '101'}) memesan makanan: ${detailsStr}`
+      );
+
+      const updatedQuantities = { ...foodQuantities };
+      CAFE_ITEMS.forEach(item => {
+        delete updatedQuantities[`${booking.booking_code}_${item.id}`];
+      });
+      setFoodQuantities(updatedQuantities);
+
+      setSuccessNotification(prev => ({
+        ...prev,
+        [booking.booking_code]: lang === 'id' 
+          ? 'Sinyal Pesanan Makanan terkirim! Staff kami sedang menyiapkan.' 
+          : 'Food order signal sent! Our staff is preparing it now.'
+      }));
+
+      setTimeout(() => {
+        setSuccessNotification(prev => ({ ...prev, [booking.booking_code]: '' }));
+      }, 5000);
+
+      setActiveActionTab(prev => ({ ...prev, [booking.booking_code]: 'none' }));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleServiceRequestSubmit = (booking: Booking, customMsg?: string) => {
+    const detailsStr = customMsg || customRequests[booking.booking_code] || '';
+    if (!detailsStr.trim()) {
+      alert(lang === 'id' ? 'Silakan ketik atau pilih permintaan layanan.' : 'Please enter or select a service request.');
+      return;
+    }
+
+    const newSignal: ServiceSignal = {
+      id: `customer-sig-${Date.now()}`,
+      booking_code: booking.booking_code,
+      room_number: booking.room_number || '101',
+      guest_name: booking.full_name,
+      type: 'message',
+      details: detailsStr.trim(),
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      const raw = localStorage.getItem('zegan_service_signals') || '[]';
+      const existing: ServiceSignal[] = JSON.parse(raw);
+      existing.push(newSignal);
+      localStorage.setItem('zegan_service_signals', JSON.stringify(existing));
+
+      logActivity(
+        'Customer',
+        'Customer',
+        `Tamu ${booking.full_name} (Kamar ${booking.room_number || '101'}) mengirim pesan: ${detailsStr}`
+      );
+
+      setCustomRequests(prev => ({ ...prev, [booking.booking_code]: '' }));
+
+      setSuccessNotification(prev => ({
+        ...prev,
+        [booking.booking_code]: lang === 'id' 
+          ? 'Sinyal Permintaan Layanan terkirim! Staff kami akan segera mengantarnya.' 
+          : 'Service request signal sent! Our staff will deliver it shortly.'
+      }));
+
+      setTimeout(() => {
+        setSuccessNotification(prev => ({ ...prev, [booking.booking_code]: '' }));
+      }, 5000);
+
+      setActiveActionTab(prev => ({ ...prev, [booking.booking_code]: 'none' }));
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const qris = getQrisSettings();
   const wa = getWhatsappSettings();
@@ -50,6 +205,13 @@ export default function CustomerPortal({ lang }: CustomerPortalProps) {
         // Sort by created_at desc
         matched.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
         setSearchResults(matched);
+
+        if (matched.length > 0) {
+          const act = matched.find(b => b.status !== 'Completed' && b.status !== 'Cancelled' && b.status !== 'Expired') || matched[0];
+          localStorage.setItem('zegan_active_customer_booking', JSON.stringify(act));
+        } else {
+          localStorage.removeItem('zegan_active_customer_booking');
+        }
 
         if (matched.length === 0) {
           setError(lang === 'id' ? 'Tidak ditemukan riwayat pemesanan untuk data tersebut.' : 'No reservation history found for this query.');
@@ -369,14 +531,17 @@ export default function CustomerPortal({ lang }: CustomerPortalProps) {
                       <div className="bg-brand-50/50 rounded-xl p-4 sm:p-6 border border-brand-100 space-y-4">
                         <div className="flex flex-col sm:flex-row gap-6 items-start">
                           {/* QRIS image view */}
-                          <div className="bg-white p-2.5 rounded-xl border border-brand-200 shadow-xs shrink-0 mx-auto sm:mx-0 text-center">
+                          <div className="bg-white p-3 rounded-xl border border-brand-200 shadow-xs shrink-0 mx-auto sm:mx-0 text-center flex flex-col items-center">
+                            <span className="text-[8px] bg-amber-50 text-amber-800 border border-amber-200/50 px-1 py-0.5 rounded font-black tracking-wide uppercase mb-1.5 block">
+                              ⚡ NOMINAL TERKUNCI
+                            </span>
                             <img
-                              src={qris.imageUrl}
+                              src={getDynamicQrisImageUrl(booking.total_price)}
                               alt="QRIS Merchant"
-                              className="w-28 h-28 object-contain"
+                              className="w-32 h-32 object-contain"
                               referrerPolicy="no-referrer"
                             />
-                            <span className="text-[9px] font-bold text-brand-900 font-mono mt-1 block">
+                            <span className="text-[9px] font-bold text-brand-900 font-mono mt-1.5 block">
                               {qris.bankName}
                             </span>
                           </div>
@@ -388,7 +553,9 @@ export default function CustomerPortal({ lang }: CustomerPortalProps) {
                               Instruksi Pembayaran QRIS:
                             </h4>
                             <p className="text-stone-600 leading-relaxed">
-                              {qris.instructions}
+                              {lang === 'id' 
+                                ? `Silakan scan QRIS di atas menggunakan aplikasi e-wallet atau m-banking Anda. Nominal pembayaran sebesar Rp${booking.total_price?.toLocaleString('id-ID')} akan terisi secara otomatis tanpa perlu mengetik manual.`
+                                : `Please scan the QRIS above using your e-wallet or mobile banking app. The payment amount of Rp${booking.total_price?.toLocaleString('id-ID')} is automatically filled and locked.`}
                             </p>
                             <p className="font-semibold text-brand-900 bg-brand-100/60 p-2 rounded">
                               Nama Rekening: {qris.accountName}
@@ -457,6 +624,281 @@ export default function CustomerPortal({ lang }: CustomerPortalProps) {
                             </button>
                           )}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Guest Service Signals Section (Only for Paid, Checked In, or Completed bookings) */}
+                    {['Paid', 'Checked In', 'CheckedIn', 'Completed'].includes(booking.status) && (
+                      <div className="bg-brand-50/70 rounded-2xl p-4 sm:p-5 border border-brand-200/80 space-y-4">
+                        <div className="flex justify-between items-center border-b border-brand-200/50 pb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base sm:text-lg">🛎️</span>
+                            <div>
+                              <h4 className="font-serif font-bold text-brand-950 text-sm sm:text-base">
+                                {lang === 'id' ? 'Layanan Mandiri & Pesan Makanan' : 'Self-Service & Cafe Orders'}
+                              </h4>
+                              <p className="text-[10px] text-stone-500 font-light">
+                                {lang === 'id' 
+                                  ? 'Kirim sinyal langsung ke staff kami untuk pelayanan super cepat.' 
+                                  : 'Send signals directly to our staff for express services.'}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] bg-brand-200/60 text-brand-900 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse">
+                            {lang === 'id' ? 'Sinyal Aktif' : 'Signal Active'}
+                          </span>
+                        </div>
+
+                        {/* Success message popup inside card */}
+                        {successNotification[booking.booking_code] && (
+                          <motion.div 
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-emerald-50 text-emerald-800 border border-emerald-100 p-3.5 rounded-xl text-xs flex items-center gap-2.5 font-semibold"
+                          >
+                            <span className="text-base">🔔</span>
+                            <span className="leading-tight">{successNotification[booking.booking_code]}</span>
+                          </motion.div>
+                        )}
+
+                        {/* 🔔 Live Notifications Banner */}
+                        {foodNotifications.filter(n => n.booking_code === booking.booking_code).length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[10px] text-amber-800 font-extrabold uppercase tracking-widest flex items-center gap-1.5">
+                              🔔 {lang === 'id' ? 'NOTIFIKASI DAPUR ZEGAN' : 'ZEGAN KITCHEN NOTIFICATIONS'}
+                            </span>
+                            <div className="space-y-2">
+                              {foodNotifications
+                                .filter(n => n.booking_code === booking.booking_code)
+                                .map(n => (
+                                  <motion.div
+                                    key={n.id}
+                                    initial={{ scale: 0.98, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="bg-amber-100 text-amber-950 border border-amber-300 p-4 rounded-xl text-xs space-y-1.5 shadow-xs"
+                                  >
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-extrabold tracking-wider text-[9px] text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded-md uppercase">
+                                        {lang === 'id' ? 'Makanan Selesai Dibuat' : 'Food Prepared'}
+                                      </span>
+                                      <span className="text-[9px] text-amber-850 font-mono">
+                                        {new Date(n.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                    <p className="font-semibold leading-relaxed">
+                                      {n.message}
+                                    </p>
+                                  </motion.div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 📋 Sinyal / Pesanan Aktif Tracker */}
+                        {trackedSignals.filter(s => s.booking_code === booking.booking_code).length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <span className="text-[10px] text-brand-800 font-extrabold uppercase tracking-widest flex items-center gap-1.5">
+                              📋 {lang === 'id' ? 'ANTREAN SINYAL AKTIF ANDA' : 'YOUR ACTIVE SIGNALS QUEUE'}
+                            </span>
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                              {trackedSignals
+                                .filter(s => s.booking_code === booking.booking_code)
+                                .map(s => {
+                                  const isFoodSig = s.type === 'food';
+                                  return (
+                                    <div key={s.id} className="bg-white p-3.5 rounded-xl border border-brand-200/70 text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-3xs">
+                                      <div className="space-y-1 min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider ${
+                                            isFoodSig ? 'bg-amber-100 text-amber-850 border border-amber-200/40' : 'bg-blue-100 text-blue-850 border border-blue-200/40'
+                                          }`}>
+                                            {isFoodSig ? (lang === 'id' ? '🍔 Pesanan Cafe' : '🍔 Cafe Order') : (lang === 'id' ? '🛎️ Layanan Kamar' : '🛎️ Room Service')}
+                                          </span>
+                                          <span className="text-[10px] text-stone-400 font-mono">
+                                            {new Date(s.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                        </div>
+                                        <p className="font-bold text-stone-900 leading-snug break-words">
+                                          {s.details}
+                                        </p>
+                                      </div>
+
+                                      <div className="shrink-0">
+                                        <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider font-extrabold ${
+                                          s.status === 'pending' ? 'bg-amber-100 text-amber-850' :
+                                          s.status === 'preparing' ? 'bg-blue-100 text-blue-850' :
+                                          s.status === 'delivered' ? 'bg-emerald-100 text-emerald-850' :
+                                          'bg-stone-100 text-stone-800'
+                                        }`}>
+                                          {s.status === 'pending' ? (lang === 'id' ? '🔴 Belum Diproses' : '🔴 Pending') :
+                                           s.status === 'preparing' ? (lang === 'id' ? '⚡ Sedang Disiapkan' : '⚡ Preparing') :
+                                           s.status === 'delivered' ? (lang === 'id' ? '🛵 Sedang Diantar' : '🛵 Out for Delivery') :
+                                           (lang === 'id' ? '✅ Selesai' : '✅ Completed')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action buttons tabs */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setActiveActionTab(prev => ({
+                              ...prev,
+                              [booking.booking_code]: prev[booking.booking_code] === 'food' ? 'none' : 'food'
+                            }))}
+                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                              activeActionTab[booking.booking_code] === 'food'
+                                ? 'bg-amber-700 border-amber-600 text-white shadow-sm'
+                                : 'bg-white border-brand-200 text-stone-700 hover:bg-brand-100/50'
+                            }`}
+                          >
+                            <Coffee className="w-4 h-4" />
+                            <span>{lang === 'id' ? 'Pesan Makanan' : 'Order Food'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveActionTab(prev => ({
+                              ...prev,
+                              [booking.booking_code]: prev[booking.booking_code] === 'service' ? 'none' : 'service'
+                            }))}
+                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                              activeActionTab[booking.booking_code] === 'service'
+                                ? 'bg-brand-700 border-brand-600 text-white shadow-sm'
+                                : 'bg-white border-brand-200 text-stone-700 hover:bg-brand-100/50'
+                            }`}
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                            <span>{lang === 'id' ? 'Layanan Kamar' : 'Room Service'}</span>
+                          </button>
+                        </div>
+
+                        {/* Sub Form 1: Food Order Menu Grid */}
+                        {activeActionTab[booking.booking_code] === 'food' && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white p-3.5 rounded-xl border border-brand-200/70 space-y-3"
+                          >
+                            <span className="text-[10px] text-brand-800 font-bold block uppercase tracking-wider">
+                              {lang === 'id' ? 'Menu Zegan Cafe Favorit' : 'Popular Cafe Menu'}
+                            </span>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                              {CAFE_ITEMS.map(item => {
+                                const qtyKey = `${booking.booking_code}_${item.id}`;
+                                const currentQty = foodQuantities[qtyKey] || 0;
+
+                                return (
+                                  <div key={item.id} className="flex items-center justify-between p-2 rounded-lg bg-brand-50/50 border border-brand-100 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <img src={item.image} alt={item.name} className="w-10 h-10 object-cover rounded-md bg-stone-100 border" />
+                                      <div>
+                                        <p className="font-bold text-stone-900">{item.name}</p>
+                                        <p className="text-[10px] text-stone-500">Rp{item.price.toLocaleString('id-ID')}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Qty Stepper */}
+                                    <div className="flex items-center gap-2.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setFoodQuantities(prev => ({
+                                          ...prev,
+                                          [qtyKey]: Math.max(0, currentQty - 1)
+                                        }))}
+                                        className="p-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors cursor-pointer"
+                                      >
+                                        <Minus className="w-3.5 h-3.5" />
+                                      </button>
+                                      <span className="font-mono font-bold w-4 text-center text-sm">{currentQty}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setFoodQuantities(prev => ({
+                                          ...prev,
+                                          [qtyKey]: currentQty + 1
+                                        }))}
+                                        className="p-1 rounded-full bg-brand-100 hover:bg-brand-200 text-brand-900 transition-colors cursor-pointer"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <button
+                              onClick={() => handleFoodOrderSubmit(booking)}
+                              className="w-full bg-amber-700 hover:bg-amber-800 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>{lang === 'id' ? 'Kirim Sinyal Pesanan Cafe' : 'Send Cafe Order Signal'}</span>
+                            </button>
+                          </motion.div>
+                        )}
+
+                        {/* Sub Form 2: Room Service / Assistance Request */}
+                        {activeActionTab[booking.booking_code] === 'service' && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white p-3.5 rounded-xl border border-brand-200/70 space-y-3"
+                          >
+                            <span className="text-[10px] text-brand-800 font-bold block uppercase tracking-wider">
+                              {lang === 'id' ? 'Pilih Permintaan Cepat' : 'Quick Requests'}
+                            </span>
+
+                            {/* Quick options buttons */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {[
+                                { label: '🧼 Minta Sabun / Sampo', text: 'Minta tambahan sabun mandi & sampo' },
+                                { label: '🥤 Tambah Air Minum', text: 'Minta tambahan air minum kemasan' },
+                                { label: '🛌 Selimut & Bantal', text: 'Minta tambahan selimut tebal dan bantal bersih' },
+                                { label: '🧹 Bersihkan Kamar', text: 'Minta tolong bersihkan & sapu kamar saya' },
+                              ].map((opt, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setCustomRequests(prev => ({
+                                    ...prev,
+                                    [booking.booking_code]: opt.text
+                                  }))}
+                                  className="text-[10px] bg-brand-50 hover:bg-brand-100 text-brand-950 font-semibold px-2.5 py-1.5 rounded-lg border border-brand-200/60 transition-colors cursor-pointer text-left"
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-[10px] text-stone-500 uppercase tracking-wider">
+                                {lang === 'id' ? 'Atau Tulis Permintaan Kustom Anda' : 'Or Type Custom Request'}
+                              </label>
+                              <input
+                                type="text"
+                                value={customRequests[booking.booking_code] || ''}
+                                onChange={(e) => setCustomRequests(prev => ({
+                                  ...prev,
+                                  [booking.booking_code]: e.target.value
+                                }))}
+                                placeholder={lang === 'id' ? 'Misal: Minta sendok garpu tambahan...' : 'E.g. Request extra spoons and forks...'}
+                                className="w-full px-3 py-2 bg-brand-50 border border-brand-200 rounded-lg text-brand-950 text-xs focus:ring-1 focus:ring-brand-700 font-medium"
+                              />
+                            </div>
+
+                            <button
+                              onClick={() => handleServiceRequestSubmit(booking)}
+                              className="w-full bg-brand-700 hover:bg-brand-850 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>{lang === 'id' ? 'Kirim Sinyal Permintaan' : 'Send Service Signal'}</span>
+                            </button>
+                          </motion.div>
+                        )}
                       </div>
                     )}
 

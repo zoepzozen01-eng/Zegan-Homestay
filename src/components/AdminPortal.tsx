@@ -4,7 +4,7 @@ import {
   BarChart3, Calendar as CalendarIcon, Users, Settings, ShieldCheck, 
   Search, Filter, Check, ArrowRight, ClipboardList, Database, RefreshCw, 
   Download, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, 
-  MessageSquare, Mail, Play, Key, UserCheck, ShieldAlert, LogOut, ChevronRight
+  MessageSquare, Mail, Play, Key, UserCheck, ShieldAlert, LogOut, ChevronRight, ChevronLeft, X
 } from 'lucide-react';
 import { Booking, BookingStatus, PaymentStatus, UserRole, ActivityLog } from '../types';
 import { 
@@ -85,7 +85,94 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
 
   const [loadingRooms, setLoadingRooms] = useState<Record<string, boolean>>({});
 
+  // Real-time Service Signals & Cafe Food Orders checking states
+  const [pendingSignalsCount, setPendingSignalsCount] = useState(0);
+  const [newSignalToast, setNewSignalToast] = useState<{ guestName: string; details: string; roomNumber: string } | null>(null);
+
+  useEffect(() => {
+    const checkSignals = () => {
+      try {
+        const raw = localStorage.getItem('zegan_service_signals') || '[]';
+        const list: any[] = JSON.parse(raw);
+        const pending = list.filter((s: any) => s.status === 'pending');
+        setPendingSignalsCount(pending.length);
+        
+        if (pending.length > 0) {
+          const latest = pending[pending.length - 1];
+          // Check if we already notified about this specific signal ID
+          const lastNotified = localStorage.getItem('zegan_last_notified_signal_id');
+          if (latest.id !== lastNotified) {
+            localStorage.setItem('zegan_last_notified_signal_id', latest.id);
+            setNewSignalToast({
+              guestName: latest.guest_name,
+              details: latest.details,
+              roomNumber: latest.room_number
+            });
+            
+            // Subtle sound chime using Web Audio API
+            try {
+              const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+              const osc = audioCtx.createOscillator();
+              const gain = audioCtx.createGain();
+              osc.connect(gain);
+              gain.connect(audioCtx.destination);
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+              gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+              osc.start();
+              osc.stop(audioCtx.currentTime + 0.1);
+              
+              setTimeout(() => {
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(1109.73, audioCtx.currentTime); // C#6
+                gain2.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                osc2.start();
+                osc2.stop(audioCtx.currentTime + 0.15);
+              }, 120);
+            } catch (e) {
+              // Ignore audio error
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error checking signals in Admin Portal:', err);
+      }
+    };
+
+    checkSignals();
+    const interval = setInterval(checkSignals, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   const calendarRoomsList = dbRooms;
+
+  // Monthly Calendar States
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [selectedCalendarDateStr, setSelectedCalendarDateStr] = useState<string>(new Date().toISOString().substring(0, 10));
+
+  // Keep the edit booking inline form inputs in sync when the selected calendar date or selected room changes
+  useEffect(() => {
+    if (selectedCalendarRoom && selectedCalendarRoom.room) {
+      const roomNum = selectedCalendarRoom.room.number;
+      const activeBooking = getRoomActiveBookingOnDate(roomNum, selectedCalendarDateStr);
+      if (activeBooking) {
+        setEditFormName(activeBooking.full_name || '');
+        setEditFormPhone(activeBooking.phone || '');
+        setEditFormCheckIn(activeBooking.check_in || '');
+        setEditFormCheckOut(activeBooking.check_out || '');
+      } else {
+        setEditFormName('');
+        setEditFormPhone('');
+        setEditFormCheckIn('');
+        setEditFormCheckOut('');
+      }
+    }
+  }, [selectedCalendarDateStr, selectedCalendarRoom?.room?.number, bookings, dbRooms]);
 
   // Fetch rooms from Supabase
   const fetchDbRooms = async () => {
@@ -658,16 +745,67 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   const getRoomActiveBooking = (roomNumber: string) => {
     const todayStr = new Date().toISOString().substring(0, 10);
     const roomObj = dbRooms.find(r => r.number === roomNumber);
-    return bookings.find(b => {
+    
+    // 1. Direct booking for this specific room
+    const directBooking = bookings.find(b => {
       if (b.status === 'Cancelled' || b.status === 'Expired') return false;
       
       const isMyRoom = (roomObj && b.room_id === roomObj.id) || 
                        b.room_number === roomNumber || 
                        (!b.room_number && roomNumber === '1');
-                       
+                        
       const isDateInRange = todayStr >= b.check_in && todayStr < b.check_out;
       return isMyRoom && isDateInRange;
-    }) || null;
+    });
+
+    if (directBooking) return directBooking;
+
+    // 2. If room is 3, 4, 5, or 6, check if 'Rumah-1' has an active booking on that date
+    if (['3', '4', '5', '6'].includes(roomNumber)) {
+      const rumahRoom = dbRooms.find(r => r.number === 'Rumah-1' || r.type === 'Rumah');
+      const rumahBooking = bookings.find(b => {
+        if (b.status === 'Cancelled' || b.status === 'Expired') return false;
+        
+        const isRumahRoom = (rumahRoom && b.room_id === rumahRoom.id) || 
+                             b.room_number === 'Rumah-1' || 
+                             (b.room_name && b.room_name.toLowerCase().includes('rumah'));
+                             
+        const isDateInRange = todayStr >= b.check_in && todayStr < b.check_out;
+        return isRumahRoom && isDateInRange;
+      });
+      if (rumahBooking) {
+        return {
+          ...rumahBooking,
+          room_number: roomNumber,
+          full_name: `${rumahBooking.full_name} (${lang === 'id' ? 'Satu Rumah' : 'Whole House'})`
+        };
+      }
+    }
+
+    // 3. If room is 'Rumah-1', check if any of the sub-rooms (3, 4, 5, 6) are booked
+    if (roomNumber === 'Rumah-1') {
+      for (const num of ['3', '4', '5', '6']) {
+        const subRoomObj = dbRooms.find(r => r.number === num);
+        const subBooking = bookings.find(b => {
+          if (b.status === 'Cancelled' || b.status === 'Expired') return false;
+          
+          const isSubRoom = (subRoomObj && b.room_id === subRoomObj.id) || 
+                             b.room_number === num;
+                             
+          const isDateInRange = todayStr >= b.check_in && todayStr < b.check_out;
+          return isSubRoom && isDateInRange;
+        });
+        if (subBooking) {
+          return {
+            ...subBooking,
+            room_number: 'Rumah-1',
+            full_name: `${subBooking.full_name} (Room ${num})`
+          };
+        }
+      }
+    }
+
+    return null;
   };
 
   // Get color status metadata for a room
@@ -707,6 +845,144 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       status: 'Available', 
       color: 'bg-emerald-600 text-emerald-50 ring-emerald-700', 
       label: lang === 'id' ? 'Kosong' : 'Available' 
+    };
+  };
+
+  // Fetch active booking for calendar on a specific date
+  const getRoomActiveBookingOnDate = (roomNumber: string, dateStr: string) => {
+    const roomObj = dbRooms.find(r => r.number === roomNumber);
+    
+    // 1. Direct booking for this specific room
+    const directBooking = bookings.find(b => {
+      if (b.status === 'Cancelled' || b.status === 'Expired') return false;
+      
+      const isMyRoom = (roomObj && b.room_id === roomObj.id) || 
+                       b.room_number === roomNumber || 
+                       (!b.room_number && roomNumber === '1');
+                        
+      const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
+      return isMyRoom && isDateInRange;
+    });
+
+    if (directBooking) return directBooking;
+
+    // 2. If room is 3, 4, 5, or 6, check if 'Rumah-1' is booked on that date
+    if (['3', '4', '5', '6'].includes(roomNumber)) {
+      const rumahRoom = dbRooms.find(r => r.number === 'Rumah-1' || r.type === 'Rumah');
+      const rumahBooking = bookings.find(b => {
+        if (b.status === 'Cancelled' || b.status === 'Expired') return false;
+        
+        const isRumahRoom = (rumahRoom && b.room_id === rumahRoom.id) || 
+                             b.room_number === 'Rumah-1' || 
+                             (b.room_name && b.room_name.toLowerCase().includes('rumah'));
+                             
+        const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
+        return isRumahRoom && isDateInRange;
+      });
+      if (rumahBooking) {
+        return {
+          ...rumahBooking,
+          room_number: roomNumber,
+          full_name: `${rumahBooking.full_name} (${lang === 'id' ? 'Satu Rumah' : 'Whole House'})`
+        };
+      }
+    }
+
+    // 3. If room is 'Rumah-1', check if any of the sub-rooms (3, 4, 5, 6) is booked
+    if (roomNumber === 'Rumah-1') {
+      for (const num of ['3', '4', '5', '6']) {
+        const subRoomObj = dbRooms.find(r => r.number === num);
+        const subBooking = bookings.find(b => {
+          if (b.status === 'Cancelled' || b.status === 'Expired') return false;
+          
+          const isSubRoom = (subRoomObj && b.room_id === subRoomObj.id) || 
+                             b.room_number === num;
+                             
+          const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
+          return isSubRoom && isDateInRange;
+        });
+        if (subBooking) {
+          return {
+            ...subBooking,
+            room_number: 'Rumah-1',
+            full_name: `${subBooking.full_name} (Room ${num})`
+          };
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Get color status metadata for a room on a specific date
+  const getRoomColorStatusOnDate = (room: any, dateStr: string) => {
+    const activeBooking = getRoomActiveBookingOnDate(room.number, dateStr);
+    const todayStr = new Date().toISOString().substring(0, 10);
+    
+    if (activeBooking) {
+      const bStatus = String(activeBooking.status).toLowerCase().replace(/[\s-_]/g, '');
+      if (bStatus === 'checkedin' || bStatus === 'occupied') {
+        return { 
+          status: 'Occupied', 
+          color: 'bg-rose-600 text-rose-50 ring-rose-700', 
+          label: lang === 'id' ? 'Terisi (Occupied)' : 'Occupied' 
+        };
+      }
+      if (bStatus === 'pending' || bStatus === 'confirmed' || bStatus === 'paid') {
+        return { 
+          status: 'Booked', 
+          color: 'bg-amber-500 text-amber-950 ring-amber-600', 
+          label: lang === 'id' ? 'Dipesan (Booked)' : 'Booked' 
+        };
+      }
+    }
+
+    if (dateStr === todayStr) {
+      const now = new Date();
+      const hasOccupiedUntil = room.occupied_until && new Date(room.occupied_until) > now;
+      const isLegacyOccupied = String(room.status).toLowerCase() === 'occupied' && !room.occupied_until;
+      if (hasOccupiedUntil || isLegacyOccupied) {
+        return { 
+          status: 'Occupied', 
+          color: 'bg-rose-600 text-rose-50 ring-rose-700', 
+          label: lang === 'id' ? 'Terisi (Occupied)' : 'Occupied' 
+        };
+      }
+    }
+    
+    return { 
+      status: 'Available', 
+      color: 'bg-emerald-600 text-emerald-50 ring-emerald-700', 
+      label: lang === 'id' ? 'Kosong' : 'Available' 
+    };
+  };
+
+  // Calculate available rooms on a specific date (out of total 9)
+  const getAvailableRoomsCountOnDate = (dateStr: string) => {
+    return getRoomCountsOnDate(dateStr).vacant;
+  };
+
+  // Get detailed room counts (vacant, booked, occupied) on a specific date based on individual room evaluation
+  const getRoomCountsOnDate = (dateStr: string) => {
+    let vacantCount = 0;
+    let occupiedCount = 0;
+    let bookedCount = 0;
+
+    dbRooms.forEach(room => {
+      const statusInfo = getRoomColorStatusOnDate(room, dateStr);
+      if (statusInfo.status === 'Occupied') {
+        occupiedCount++;
+      } else if (statusInfo.status === 'Booked') {
+        bookedCount++;
+      } else {
+        vacantCount++;
+      }
+    });
+
+    return {
+      vacant: vacantCount,
+      occupied: occupiedCount,
+      booked: bookedCount
     };
   };
 
@@ -814,13 +1090,28 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           </p>
         </div>
 
-        <button
-          onClick={onLogout}
-          className="bg-stone-800 hover:bg-red-950/80 hover:text-red-300 border border-stone-700 text-stone-200 text-xs uppercase tracking-widest font-bold px-6 py-3 rounded-xl transition-all cursor-pointer flex items-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Keluar</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href="/service-signals"
+            className="bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-400 text-xs uppercase tracking-widest font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 relative"
+          >
+            <span className="text-sm animate-pulse">🛎️</span>
+            <span>Monitor Sinyal</span>
+            {pendingSignalsCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-600 text-white font-mono text-[10px] font-extrabold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center border-2 border-stone-900 animate-bounce">
+                {pendingSignalsCount}
+              </span>
+            )}
+          </a>
+
+          <button
+            onClick={onLogout}
+            className="bg-stone-800 hover:bg-red-950/80 hover:text-red-300 border border-stone-700 text-stone-200 text-xs uppercase tracking-widest font-bold px-6 py-3 rounded-xl transition-all cursor-pointer flex items-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Keluar</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Menu list Tab Navigation */}
@@ -1332,114 +1623,412 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           </div>
         )}
 
-        {/* SUBVIEW 3: KALENDER KAMAR GRID */}
-        {activeTab === 'calendar' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
-              <div className="border-b pb-3 flex justify-between items-center">
-                <div>
-                  <h3 className="font-serif font-bold text-brand-950 text-base">Grid Monitor Kamar Real-time</h3>
-                  <p className="text-xs text-stone-500 mt-0.5">Kondisi keterisian seluruh unit kamar hari ini.</p>
+        {activeTab === 'calendar' && (() => {
+          const monthNames = lang === 'id'
+            ? ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+            : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+          const dayNames = lang === 'id' 
+            ? ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
+            : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+          const handlePrevMonth = () => {
+            if (calendarMonth === 0) {
+              setCalendarMonth(11);
+              setCalendarYear(prev => prev - 1);
+            } else {
+              setCalendarMonth(prev => prev - 1);
+            }
+          };
+
+          const handleNextMonth = () => {
+            if (calendarMonth === 11) {
+              setCalendarMonth(0);
+              setCalendarYear(prev => prev + 1);
+            } else {
+              setCalendarMonth(prev => prev + 1);
+            }
+          };
+
+          const formatDateString = (date: Date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          };
+
+          const getFormattedHumanDate = (dateStr: string) => {
+            try {
+              const parts = dateStr.split('-');
+              if (parts.length !== 3) return dateStr;
+              const y = parts[0];
+              const mIdx = parseInt(parts[1], 10) - 1;
+              const d = parseInt(parts[2], 10);
+              return `${d} ${monthNames[mIdx]} ${y}`;
+            } catch (e) {
+              return dateStr;
+            }
+          };
+
+          const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1);
+          const startDayOfWeek = firstDayOfMonth.getDay();
+          const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
+          const daysArray = [];
+          for (let i = 0; i < startDayOfWeek; i++) {
+            daysArray.push(null);
+          }
+          for (let d = 1; d <= daysInMonth; d++) {
+            daysArray.push(new Date(calendarYear, calendarMonth, d));
+          }
+
+          return (
+            <div className="space-y-6 animate-fadeIn">
+              {/* Visi Utama: Monitor Real-time Hari Ini */}
+              <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
+                <div className="border-b pb-3 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-serif font-bold text-brand-950 text-base">Grid Monitor Kamar Real-time</h3>
+                    <p className="text-xs text-stone-500 mt-0.5">Kondisi keterisian seluruh unit kamar hari ini.</p>
+                  </div>
+                  {/* Legenda warna */}
+                  <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-wider text-stone-600">
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-600 rounded-sm"></span><span>{lang === 'id' ? 'Kosong (Available)' : 'Available'}</span></div>
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-amber-500 rounded-sm"></span><span>{lang === 'id' ? 'Dipesan (Booked / Kuning)' : 'Booked'}</span></div>
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-rose-600 rounded-sm"></span><span>{lang === 'id' ? 'Terisi (Occupied / CheckedIn)' : 'Occupied'}</span></div>
+                  </div>
                 </div>
-                {/* Legenda warna */}
-                <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-wider text-stone-600">
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-600 rounded-sm"></span><span>{lang === 'id' ? 'Kosong (Available)' : 'Available'}</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-amber-500 rounded-sm"></span><span>{lang === 'id' ? 'Dipesan (Booked / Kuning)' : 'Booked'}</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-rose-600 rounded-sm"></span><span>{lang === 'id' ? 'Terisi (Occupied / CheckedIn)' : 'Occupied'}</span></div>
+
+                {/* 9 BIG BOXES */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-2">
+                  {calendarRoomsList.map((room) => {
+                    const statusInfo = getRoomColorStatus(room);
+                    const activeBooking = getRoomActiveBooking(room.number);
+                    const isLoading = !!loadingRooms[room.id];
+
+                    return (
+                      <motion.button
+                        whileHover={isLoading ? {} : { scale: 1.03 }}
+                        key={room.number}
+                        onClick={() => {
+                          if (statusInfo.status === 'Booked' && activeBooking) {
+                            handleCheckInBooking(room, activeBooking);
+                          } else if (statusInfo.status === 'Available' || (statusInfo.status === 'Occupied' && !activeBooking)) {
+                            handleManualStatusToggle(room);
+                          }
+                        }}
+                        disabled={isLoading}
+                        className={`h-44 rounded-2xl p-5 text-left border flex flex-col justify-between shadow-sm cursor-pointer transition-all ring-1 ${statusInfo.color} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                      >
+                        <div>
+                          <div className="flex justify-between items-start">
+                            <span className="text-lg font-bold tracking-wide font-mono">No. {room.number}</span>
+                            <div className="flex items-center gap-1.5">
+                              {/* Manage Button */}
+                              <button
+                                type="button"
+                                className="detail-btn hover:bg-black/20 text-white p-1 rounded-md transition-all cursor-pointer mr-0.5"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Stop click from toggling status
+                                  setSelectedCalendarRoom({ room, statusInfo, activeBooking });
+                                  if (activeBooking) {
+                                    setEditFormName(activeBooking.full_name);
+                                    setEditFormPhone(activeBooking.phone);
+                                    setEditFormCheckIn(activeBooking.check_in);
+                                    setEditFormCheckOut(activeBooking.check_out);
+                                  }
+                                  setIsEditingBooking(false);
+                                }}
+                                title={lang === 'id' ? 'Kelola Detail Booking' : 'Manage Booking Details'}
+                              >
+                                <Settings className="w-4 h-4" />
+                              </button>
+                              <span className="text-[10px] font-extrabold uppercase tracking-widest bg-black/10 px-1.5 py-0.5 rounded-md">
+                                {isLoading ? '...' : statusInfo.label}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[11px] block opacity-85 mt-1 font-sans">{room.type}</span>
+                        </div>
+
+                        {/* Display guest name if occupied or booked */}
+                        <div>
+                          {activeBooking ? (
+                            <div className="space-y-1 border-t border-white/20 pt-2 mt-2">
+                              <span className="text-[10px] uppercase opacity-75 font-semibold block tracking-wider">Tamu Aktif</span>
+                              <div className="flex justify-between items-center gap-1">
+                                <span className="text-xs font-extrabold block truncate max-w-[100px] leading-tight">
+                                  👤 {activeBooking.full_name}
+                                </span>
+                                {statusInfo.status === 'Booked' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCheckInBooking(room, activeBooking);
+                                    }}
+                                    className="bg-white text-amber-950 hover:bg-amber-100 font-extrabold text-[10px] px-2 py-0.5 rounded-md transition-all shadow-sm shrink-0 cursor-pointer uppercase tracking-wider"
+                                  >
+                                    Check-in
+                                  </button>
+                                )}
+                              </div>
+                              <span className="text-[9px] opacity-80 block font-mono font-medium">
+                                📅 In: {activeBooking.check_in}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] italic font-light opacity-85">
+                              {isLoading ? (lang === 'id' ? 'Menyimpan...' : 'Saving...') : (room.status === 'Available' ? (lang === 'id' ? 'Siap huni / kosong' : 'Ready / Kosong') : (lang === 'id' ? 'Terisi (Occupied)' : 'Occupied'))}
+                            </span>
+                          )}
+                        </div>
+                      </motion.button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* 9 BIG BOXES */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-2">
-                {calendarRoomsList.map((room) => {
-                  const statusInfo = getRoomColorStatus(room);
-                  const activeBooking = getRoomActiveBooking(room.number);
-                  const isLoading = !!loadingRooms[room.id];
+              {/* SEKSI KALENDER BULANAN & DETAIL KAMAR BERDASARKAN TANGGAL KLIK */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+                
+                {/* Kolom Kiri: Kalender Bulanan */}
+                <div className="lg:col-span-7 bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 border-b gap-3">
+                    <div>
+                      <h4 className="font-serif font-bold text-brand-950 text-base">
+                        {lang === 'id' ? 'Kalender Okupansi Bulanan' : 'Monthly Occupancy Calendar'}
+                      </h4>
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        {lang === 'id' ? 'Sisa kamar kosong di setiap tanggal bulan ini.' : 'Available vacant rooms for each day of the month.'}
+                      </p>
+                    </div>
 
-                  return (
-                    <motion.button
-                      whileHover={isLoading ? {} : { scale: 1.03 }}
-                      key={room.number}
-                      onClick={() => {
-                        if (statusInfo.status === 'Booked' && activeBooking) {
-                          handleCheckInBooking(room, activeBooking);
-                        } else if (statusInfo.status === 'Available' || (statusInfo.status === 'Occupied' && !activeBooking)) {
-                          handleManualStatusToggle(room);
+                    {/* Navigasi Bulan */}
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        onClick={handlePrevMonth}
+                        type="button"
+                        className="p-1.5 rounded-lg border border-stone-200 hover:bg-stone-100 text-stone-700 transition-all cursor-pointer bg-white"
+                        title={lang === 'id' ? 'Bulan Sebelumnya' : 'Previous Month'}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-bold font-serif text-brand-950 min-w-[120px] text-center uppercase tracking-wider">
+                        {monthNames[calendarMonth]} {calendarYear}
+                      </span>
+                      <button
+                        onClick={handleNextMonth}
+                        type="button"
+                        className="p-1.5 rounded-lg border border-stone-200 hover:bg-stone-100 text-stone-700 transition-all cursor-pointer bg-white"
+                        title={lang === 'id' ? 'Bulan Berikutnya' : 'Next Month'}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Kalender Grid */}
+                  <div className="space-y-2">
+                    {/* Header Hari */}
+                    <div className="grid grid-cols-7 gap-1 text-center font-bold">
+                      {dayNames.map((dayName, idx) => (
+                        <div
+                          key={dayName}
+                          className={`text-[10px] uppercase tracking-wider py-1 ${
+                            idx === 0 ? 'text-rose-600' : idx === 6 ? 'text-brand-700' : 'text-stone-400'
+                          }`}
+                        >
+                          {dayName}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Tanggal Grid */}
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {daysArray.map((day, idx) => {
+                        if (!day) {
+                          return <div key={`empty-${idx}`} className="bg-stone-50/20 rounded-xl aspect-square border border-transparent" />;
                         }
-                      }}
-                      disabled={isLoading}
-                      className={`h-44 rounded-2xl p-5 text-left border flex flex-col justify-between shadow-sm cursor-pointer transition-all ring-1 ${statusInfo.color} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
-                    >
-                      <div>
-                        <div className="flex justify-between items-start">
-                          <span className="text-lg font-bold tracking-wide font-mono">No. {room.number}</span>
-                          <div className="flex items-center gap-1.5">
-                            {/* Manage Button */}
-                            <button
-                              type="button"
-                              className="detail-btn hover:bg-black/20 text-white p-1 rounded-md transition-all cursor-pointer mr-0.5"
-                              onClick={(e) => {
-                                e.stopPropagation(); // Stop click from toggling status
-                                setSelectedCalendarRoom({ room, statusInfo, activeBooking });
-                                if (activeBooking) {
-                                  setEditFormName(activeBooking.full_name);
-                                  setEditFormPhone(activeBooking.phone);
-                                  setEditFormCheckIn(activeBooking.check_in);
-                                  setEditFormCheckOut(activeBooking.check_out);
-                                }
-                                setIsEditingBooking(false);
-                              }}
-                              title={lang === 'id' ? 'Kelola Detail Booking' : 'Manage Booking Details'}
-                            >
-                              <Settings className="w-4 h-4" />
-                            </button>
-                            <span className="text-[10px] font-extrabold uppercase tracking-widest bg-black/10 px-1.5 py-0.5 rounded-md">
-                              {isLoading ? '...' : statusInfo.label}
+
+                        const dateStr = formatDateString(day);
+                        const counts = getRoomCountsOnDate(dateStr);
+                        const isSelected = selectedCalendarDateStr === dateStr;
+                        const isToday = new Date().toISOString().substring(0, 10) === dateStr;
+
+                        return (
+                          <button
+                            key={dateStr}
+                            onClick={() => setSelectedCalendarDateStr(dateStr)}
+                            type="button"
+                            className={`aspect-square p-1.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-brand-700 bg-brand-50/50 ring-2 ring-brand-700 ring-offset-1'
+                                : isToday
+                                ? 'border-brand-500 bg-brand-50/20'
+                                : 'border-stone-100 bg-stone-50/30 hover:bg-stone-50 hover:border-stone-300'
+                            }`}
+                          >
+                            <span className={`text-xs font-bold font-mono leading-none ${
+                              isToday ? 'text-brand-700 font-extrabold underline underline-offset-2' : 'text-stone-700'
+                            }`}>
+                              {day.getDate()}
                             </span>
+                            
+                            {/* Detailed dynamic indicators */}
+                            <div className="w-full mt-1">
+                              {/* Desktop / Tablet: Detailed rows with text label & status counts */}
+                              <div className="hidden sm:flex flex-col gap-0.5">
+                                {/* Kosong - Hijau */}
+                                <div className="flex items-center justify-between text-[8px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200/40 font-bold leading-none">
+                                  <span>{lang === 'id' ? 'Kosong' : 'Vacant'}</span>
+                                  <span className="bg-emerald-600 text-white rounded px-1 text-[8px] font-mono leading-none font-extrabold">{counts.vacant}</span>
+                                </div>
+                                {/* Baru Pesan - Kuning */}
+                                <div className="flex items-center justify-between text-[8px] px-1 py-0.5 rounded bg-amber-50/80 text-amber-800 border border-amber-200/40 font-bold leading-none">
+                                  <span>{lang === 'id' ? 'Pesan' : 'Booked'}</span>
+                                  <span className="bg-amber-500 text-amber-950 rounded px-1 text-[8px] font-mono leading-none font-extrabold">{counts.booked}</span>
+                                </div>
+                                {/* Terisi - Merah */}
+                                <div className="flex items-center justify-between text-[8px] px-1 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200/40 font-bold leading-none">
+                                  <span>{lang === 'id' ? 'Terisi' : 'Occupied'}</span>
+                                  <span className="bg-rose-600 text-white rounded px-1 text-[8px] font-mono leading-none font-extrabold">{counts.occupied}</span>
+                                </div>
+                              </div>
+
+                              {/* Mobile: Compact color-coded dots with counts */}
+                              <div className="flex sm:hidden justify-center items-center gap-0.5 mt-0.5 flex-wrap">
+                                <span className="inline-flex items-center justify-center bg-emerald-100 text-emerald-850 font-extrabold text-[8px] w-3.5 h-3.5 rounded-full border border-emerald-300" title="Kosong">
+                                  {counts.vacant}
+                                </span>
+                                <span className="inline-flex items-center justify-center bg-amber-100 text-amber-900 font-extrabold text-[8px] w-3.5 h-3.5 rounded-full border border-amber-300" title="Baru Pesan">
+                                  {counts.booked}
+                                </span>
+                                <span className="inline-flex items-center justify-center bg-rose-100 text-rose-900 font-extrabold text-[8px] w-3.5 h-3.5 rounded-full border border-rose-300" title="Terisi">
+                                  {counts.occupied}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Keterangan Warna Kalender */}
+                  <div className="flex flex-wrap items-center gap-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-stone-600 justify-center border-t border-dashed border-stone-150 mt-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 border border-emerald-700"></span>
+                      <span>{lang === 'id' ? 'Kosong (Hijau)' : 'Vacant (Green)'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-amber-600"></span>
+                      <span>{lang === 'id' ? 'Baru Pesan (Kuning)' : 'Booked (Yellow)'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-600 border border-rose-700"></span>
+                      <span>{lang === 'id' ? 'Terisi (Merah)' : 'Occupied (Red)'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Kolom Kanan: Detail per Kamar untuk Tanggal Terpilih */}
+                <div className="lg:col-span-5 bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
+                  <div className="border-b pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div>
+                      <h4 className="font-serif font-bold text-brand-950 text-base">
+                        {lang === 'id' ? 'Detail Status Kamar' : 'Room Status Details'}
+                      </h4>
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        {lang === 'id' ? 'Keterisian kamar pada tanggal:' : 'Room occupancy on date:'}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold px-3 py-1 bg-brand-50 text-brand-950 border border-brand-200 rounded-full font-mono shrink-0">
+                      📅 {getFormattedHumanDate(selectedCalendarDateStr)}
+                    </span>
+                  </div>
+
+                  {/* Dynamic counts summary statistics for the selected date */}
+                  {(() => {
+                    const selCounts = getRoomCountsOnDate(selectedCalendarDateStr);
+                    return (
+                      <div className="grid grid-cols-3 gap-2 bg-stone-50/70 p-2.5 rounded-xl border border-stone-100">
+                        {/* Kosong */}
+                        <div className="flex flex-col items-center justify-center bg-emerald-50 text-emerald-950 p-1.5 rounded-lg border border-emerald-200/50 text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">{lang === 'id' ? 'Kosong' : 'Vacant'}</span>
+                          <span className="text-base font-extrabold font-mono mt-0.5 text-emerald-600">{selCounts.vacant}</span>
+                        </div>
+                        {/* Baru Pesan */}
+                        <div className="flex flex-col items-center justify-center bg-amber-50/80 text-amber-950 p-1.5 rounded-lg border border-amber-200/50 text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700">{lang === 'id' ? 'Pesan' : 'Booked'}</span>
+                          <span className="text-base font-extrabold font-mono mt-0.5 text-amber-500">{selCounts.booked}</span>
+                        </div>
+                        {/* Terisi */}
+                        <div className="flex flex-col items-center justify-center bg-rose-50 text-rose-950 p-1.5 rounded-lg border border-rose-200/50 text-center">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-rose-700">{lang === 'id' ? 'Terisi' : 'Occupied'}</span>
+                          <span className="text-base font-extrabold font-mono mt-0.5 text-rose-600">{selCounts.occupied}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Room status details grid */}
+                  <div className="grid grid-cols-2 gap-4 max-h-[360px] overflow-y-auto pr-1">
+                    {calendarRoomsList.map((room) => {
+                      const statusInfo = getRoomColorStatusOnDate(room, selectedCalendarDateStr);
+                      const activeBooking = getRoomActiveBookingOnDate(room.number, selectedCalendarDateStr);
+
+                      return (
+                        <div
+                          key={`detail-room-${room.number}`}
+                          onClick={() => {
+                            setSelectedCalendarRoom({ room, statusInfo, activeBooking });
+                            if (activeBooking) {
+                              setEditFormName(activeBooking.full_name);
+                              setEditFormPhone(activeBooking.phone);
+                              setEditFormCheckIn(activeBooking.check_in);
+                              setEditFormCheckOut(activeBooking.check_out);
+                            }
+                            setIsEditingBooking(false);
+                          }}
+                          className={`rounded-xl p-3.5 text-left border flex flex-col justify-between shadow-2xs transition-all cursor-pointer hover:scale-102 ring-1 ${statusInfo.color}`}
+                        >
+                          <div>
+                            <div className="flex justify-between items-start">
+                              <span className="text-xs font-bold font-mono">No. {room.number}</span>
+                              <span className="text-[8px] font-extrabold uppercase tracking-widest bg-black/10 px-1 py-0.5 rounded-sm">
+                                {statusInfo.label}
+                              </span>
+                            </div>
+                            <span className="text-[10px] block opacity-85 mt-0.5 leading-tight">{room.type}</span>
+                          </div>
+
+                          <div className="mt-3 pt-2 border-t border-white/20">
+                            {activeBooking ? (
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold block truncate leading-none">
+                                  👤 {activeBooking.full_name}
+                                </span>
+                                <span className="text-[8px] opacity-80 block font-mono">
+                                  📅 In: {activeBooking.check_in}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[9px] italic font-light opacity-80 block text-center">
+                                {lang === 'id' ? 'Kosong (Ready)' : 'Available (Ready)'}
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <span className="text-[11px] block opacity-85 mt-1 font-sans">{room.type}</span>
-                      </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                      {/* Display guest name if occupied or booked */}
-                      <div>
-                        {activeBooking ? (
-                          <div className="space-y-1 border-t border-white/20 pt-2 mt-2">
-                            <span className="text-[10px] uppercase opacity-75 font-semibold block tracking-wider">Tamu Aktif</span>
-                            <div className="flex justify-between items-center gap-1">
-                              <span className="text-xs font-extrabold block truncate max-w-[100px] leading-tight">
-                                👤 {activeBooking.full_name}
-                              </span>
-                              {statusInfo.status === 'Booked' && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCheckInBooking(room, activeBooking);
-                                  }}
-                                  className="bg-white text-amber-950 hover:bg-amber-100 font-extrabold text-[10px] px-2 py-0.5 rounded-md transition-all shadow-sm shrink-0 cursor-pointer uppercase tracking-wider"
-                                >
-                                  Check-in
-                                </button>
-                              )}
-                            </div>
-                            <span className="text-[9px] opacity-80 block font-mono font-medium">
-                              📅 In: {activeBooking.check_in}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] italic font-light opacity-85">
-                            {isLoading ? (lang === 'id' ? 'Menyimpan...' : 'Saving...') : (room.status === 'Available' ? (lang === 'id' ? 'Siap huni / kosong' : 'Ready / Kosong') : (lang === 'id' ? 'Terisi (Occupied)' : 'Occupied'))}
-                          </span>
-                        )}
-                      </div>
-                    </motion.button>
-                  );
-                })}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* SUBVIEW 4: BOOKING OFFLINE FORM */}
         {activeTab === 'offline-booking' && (
@@ -1916,239 +2505,255 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
 
       {/* 8-Room Box Click Popup Drawer */}
       <AnimatePresence>
-        {selectedCalendarRoom && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
-              className="w-full max-w-lg bg-white rounded-3xl overflow-hidden border shadow-2xl text-stone-800"
-            >
-              {/* Popup Header */}
-              <div className="bg-stone-900 text-white p-6 flex justify-between items-center">
-                <div>
-                  <span className="text-[10px] text-brand-300 uppercase tracking-widest font-extrabold block">No. Kamar {selectedCalendarRoom.room.number}</span>
-                  <h3 className="text-lg font-serif font-bold mt-0.5">{selectedCalendarRoom.room.type}</h3>
-                </div>
-                <button
-                  onClick={() => setSelectedCalendarRoom(null)}
-                  className="p-1.5 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
-              </div>
+        {selectedCalendarRoom && (() => {
+          const room = selectedCalendarRoom.room;
+          const statusInfo = getRoomColorStatusOnDate(room, selectedCalendarDateStr);
+          const activeBooking = getRoomActiveBookingOnDate(room.number, selectedCalendarDateStr);
 
-              {/* Popup Content */}
-              <div className="p-6 sm:p-8 space-y-6">
-                
-                {/* Active Booking Detail */}
-                {selectedCalendarRoom.activeBooking ? (
-                  isEditingBooking ? (
-                    // Edit Booking Inline Form
-                    <form onSubmit={(e) => handleEditBookingSubmit(e, selectedCalendarRoom.activeBooking.booking_code)} className="space-y-4 text-xs font-semibold">
-                      <div className="space-y-1">
-                        <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Nama Lengkap Tamu</label>
-                        <input
-                          type="text"
-                          value={editFormName}
-                          onChange={(e) => setEditFormName(e.target.value)}
-                          className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Nomor WhatsApp</label>
-                        <input
-                          type="text"
-                          value={editFormPhone}
-                          onChange={(e) => setEditFormPhone(e.target.value)}
-                          className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
-                          required
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Check-In Date</label>
-                          <input
-                            type="date"
-                            value={editFormCheckIn}
-                            onChange={(e) => setEditFormCheckIn(e.target.value)}
-                            className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Check-Out Date</label>
-                          <input
-                            type="date"
-                            value={editFormCheckOut}
-                            onChange={(e) => setEditFormCheckOut(e.target.value)}
-                            className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
-                            required
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-2.5 pt-3">
-                        <button
-                          type="submit"
-                          className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
-                        >
-                          Simpan Perubahan
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsEditingBooking(false)}
-                          className="px-5 py-3 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
-                        >
-                          Batal
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    // Display Detail
-                    <div className="space-y-4">
-                      <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200/50 space-y-3 text-xs font-semibold">
-                        <div className="flex justify-between items-center border-b pb-2">
-                          <span className="text-stone-400">Kode Booking:</span>
-                          <span className="font-mono font-bold text-brand-900 text-sm">{selectedCalendarRoom.activeBooking.booking_code}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">Nama Tamu:</span>
-                          <span className="text-stone-800 font-bold">👤 {selectedCalendarRoom.activeBooking.full_name}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">No. WhatsApp:</span>
-                          <span className="text-stone-800 font-mono">📞 {selectedCalendarRoom.activeBooking.phone}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">Check-In:</span>
-                          <span className="text-stone-800">📅 {selectedCalendarRoom.activeBooking.check_in}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">Check-Out:</span>
-                          <span className="text-stone-800">📅 {selectedCalendarRoom.activeBooking.check_out}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">Total Harga:</span>
-                          <span className="text-brand-900 font-bold font-mono">Rp{(selectedCalendarRoom.activeBooking.total_price || 0).toLocaleString('id-ID')}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t">
-                          <span className="text-stone-400">Status Pembayaran:</span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-extrabold ${
-                            selectedCalendarRoom.activeBooking.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                            selectedCalendarRoom.activeBooking.status === 'Checked In' ? 'bg-blue-100 text-blue-800' :
-                            selectedCalendarRoom.activeBooking.status === 'Waiting Verification' ? 'bg-amber-100 text-amber-800' :
-                            'bg-stone-100 text-stone-600'
-                          }`}>
-                            {selectedCalendarRoom.activeBooking.status}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Interactive Actions for Room Box Popup */}
-                      <div className="grid grid-cols-2 gap-3.5 pt-2 text-xs">
-                        
-                        {/* 1. Konfirmasi Pembayaran */}
-                        <button
-                          onClick={() => handleConfirmPaid(selectedCalendarRoom.activeBooking.booking_code)}
-                          disabled={selectedCalendarRoom.activeBooking.status === 'Paid' || selectedCalendarRoom.activeBooking.status === 'Checked In' || selectedCalendarRoom.activeBooking.status === 'Completed'}
-                          className="p-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-45 disabled:pointer-events-none text-white rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Bayar Lunas</span>
-                        </button>
-
-                        {/* 2. Check In */}
-                        <button
-                          onClick={() => handleConfirmCheckIn(selectedCalendarRoom.activeBooking.booking_code)}
-                          disabled={selectedCalendarRoom.activeBooking.status !== 'Paid'}
-                          className="p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-45 disabled:pointer-events-none text-white rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
-                        >
-                          <Clock className="w-4 h-4" />
-                          <span>Check In</span>
-                        </button>
-
-                        {/* 3. Check Out */}
-                        <button
-                          onClick={() => handleConfirmCheckOut(selectedCalendarRoom.activeBooking.booking_code)}
-                          disabled={selectedCalendarRoom.activeBooking.status !== 'Checked In'}
-                          className="p-3 bg-stone-800 hover:bg-stone-900 disabled:opacity-45 disabled:pointer-events-none text-white rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          <span>Check Out</span>
-                        </button>
-
-                        {/* 4. Edit Booking */}
-                        <button
-                          onClick={() => setIsEditingBooking(true)}
-                          className="p-3 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 border"
-                        >
-                          <Settings className="w-4 h-4" />
-                          <span>Edit Booking</span>
-                        </button>
-
-                        {/* 5. Batalkan Booking */}
-                        <button
-                          onClick={() => handleCancelBooking(selectedCalendarRoom.activeBooking.booking_code)}
-                          disabled={selectedCalendarRoom.activeBooking.status === 'Cancelled' || selectedCalendarRoom.activeBooking.status === 'Completed'}
-                          className="p-3 bg-red-50 hover:bg-red-100 disabled:opacity-45 disabled:pointer-events-none text-red-600 border border-red-200 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 col-span-2 mt-1"
-                        >
-                          <AlertTriangle className="w-4 h-4" />
-                          <span>Batalkan Reservasi</span>
-                        </button>
-
-                      </div>
-                    </div>
-                  )
-                ) : (
-                  <div className="py-8 text-center space-y-4">
-                    <p className="text-sm font-semibold text-emerald-600">Unit Kamar kosong dan siap dipesan sekarang juga.</p>
-                    <button
-                      onClick={() => {
-                        setOfflineRoomNum(selectedCalendarRoom.room.number);
-                        setSelectedCalendarRoom(null);
-                        handleTabSelection('offline-booking');
-                      }}
-                      className="px-5 py-3 bg-brand-700 hover:bg-brand-850 text-white rounded-xl text-xs font-bold uppercase tracking-widest cursor-pointer transition-all"
-                    >
-                      Buat Booking Offline Di Sini
-                    </button>
-                  </div>
-                )}
-
-                {/* Manual Room Status Override Section */}
-                <div className="border-t border-stone-200 pt-4 mt-4 space-y-3 bg-stone-50 p-4 rounded-xl">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h4 className="text-xs font-bold text-stone-800">Ubah Status Kamar Manual</h4>
-                      <p className="text-[10px] text-stone-500">Gunakan untuk memblokir/membuka kamar di luar sistem booking.</p>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase ${
-                      selectedCalendarRoom.room.status === 'Available' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+              <motion.div
+                initial={{ scale: 0.92, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.92, opacity: 0 }}
+                className="w-full max-w-lg bg-white rounded-3xl overflow-hidden border shadow-2xl text-stone-800 animate-fadeIn"
+              >
+                {/* Popup Header with dynamic colors based on status (Hijau = Available, Kuning = Booked, Merah = Occupied) */}
+                <div className={`p-6 flex justify-between items-center transition-colors duration-300 ${
+                  statusInfo.status === 'Available' ? 'bg-emerald-600 text-white shadow-md' :
+                  statusInfo.status === 'Booked' ? 'bg-amber-500 text-amber-950 shadow-md' :
+                  'bg-rose-600 text-white shadow-md'
+                }`}>
+                  <div>
+                    <span className={`text-[10px] uppercase tracking-widest font-extrabold block ${
+                      statusInfo.status === 'Booked' ? 'text-amber-900/90' : 'text-white/80'
                     }`}>
-                      {selectedCalendarRoom.room.status === 'Available' ? 'KOSONG / AVAILABLE' : 'TERISI / OCCUPIED'}
+                      No. Kamar {room.number} • {statusInfo.label}
                     </span>
+                    <h3 className="text-lg font-serif font-bold mt-0.5">{room.type}</h3>
                   </div>
                   <button
-                    type="button"
-                    onClick={() => handleManualStatusToggle(selectedCalendarRoom.room)}
-                    className={`w-full py-2.5 px-4 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                      selectedCalendarRoom.room.status === 'Available' 
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white' 
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    onClick={() => setSelectedCalendarRoom(null)}
+                    className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                      statusInfo.status === 'Booked' ? 'hover:bg-black/10 text-amber-950/70 hover:text-amber-950' : 'hover:bg-white/10 text-white/70 hover:text-white'
                     }`}
                   >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>
-                      {selectedCalendarRoom.room.status === 'Available' ? 'Tandai Sebagai TERISI (Occupied)' : 'Tandai Sebagai KOSONG (Available)'}
-                    </span>
+                    <XCircle className="w-6 h-6" />
                   </button>
                 </div>
 
-              </div>
-            </motion.div>
-          </div>
-        )}
+                {/* Popup Content */}
+                <div className="p-6 sm:p-8 space-y-6">
+                  
+                  {/* Active Booking Detail */}
+                  {activeBooking ? (
+                    isEditingBooking ? (
+                      // Edit Booking Inline Form
+                      <form onSubmit={(e) => handleEditBookingSubmit(e, activeBooking.booking_code)} className="space-y-4 text-xs font-semibold">
+                        <div className="space-y-1">
+                          <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Nama Lengkap Tamu</label>
+                          <input
+                            type="text"
+                            value={editFormName}
+                            onChange={(e) => setEditFormName(e.target.value)}
+                            className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Nomor WhatsApp</label>
+                          <input
+                            type="text"
+                            value={editFormPhone}
+                            onChange={(e) => setEditFormPhone(e.target.value)}
+                            className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Check-In Date</label>
+                            <input
+                              type="date"
+                              value={editFormCheckIn}
+                              onChange={(e) => setEditFormCheckIn(e.target.value)}
+                              className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] text-stone-400 uppercase tracking-wider">Check-Out Date</label>
+                            <input
+                              type="date"
+                              value={editFormCheckOut}
+                              onChange={(e) => setEditFormCheckOut(e.target.value)}
+                              className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2.5 pt-3">
+                          <button
+                            type="submit"
+                            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+                          >
+                            Simpan Perubahan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingBooking(false)}
+                            className="px-5 py-3 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      // Display Detail
+                      <div className="space-y-4">
+                        <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200/50 space-y-3 text-xs font-semibold">
+                          <div className="flex justify-between items-center border-b pb-2">
+                            <span className="text-stone-400">Kode Booking:</span>
+                            <span className="font-mono font-bold text-brand-900 text-sm">{activeBooking.booking_code}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Nama Tamu:</span>
+                            <span className="text-stone-800 font-bold">👤 {activeBooking.full_name}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">No. WhatsApp:</span>
+                            <span className="text-stone-800 font-mono">📞 {activeBooking.phone}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Check-In:</span>
+                            <span className="text-stone-800">📅 {activeBooking.check_in}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Check-Out:</span>
+                            <span className="text-stone-800">📅 {activeBooking.check_out}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Total Harga:</span>
+                            <span className="text-brand-900 font-bold font-mono">Rp{(activeBooking.total_price || 0).toLocaleString('id-ID')}</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2 border-t">
+                            <span className="text-stone-400">Status Pembayaran:</span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-extrabold ${
+                              activeBooking.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                              activeBooking.status === 'Checked In' ? 'bg-blue-100 text-blue-800' :
+                              activeBooking.status === 'Waiting Verification' ? 'bg-amber-100 text-amber-800' :
+                              'bg-stone-100 text-stone-600'
+                            }`}>
+                              {activeBooking.status}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Interactive Actions for Room Box Popup */}
+                        <div className="grid grid-cols-2 gap-3.5 pt-2 text-xs">
+                          
+                          {/* 1. Konfirmasi Pembayaran */}
+                          <button
+                            onClick={() => handleConfirmPaid(activeBooking.booking_code)}
+                            disabled={activeBooking.status === 'Paid' || activeBooking.status === 'Checked In' || activeBooking.status === 'Completed'}
+                            className="p-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-45 disabled:pointer-events-none text-white rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Bayar Lunas</span>
+                          </button>
+
+                          {/* 2. Check In */}
+                          <button
+                            onClick={() => handleConfirmCheckIn(activeBooking.booking_code)}
+                            disabled={activeBooking.status !== 'Paid'}
+                            className="p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-45 disabled:pointer-events-none text-white rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <Clock className="w-4 h-4" />
+                            <span>Check In</span>
+                          </button>
+
+                          {/* 3. Check Out */}
+                          <button
+                            onClick={() => handleConfirmCheckOut(activeBooking.booking_code)}
+                            disabled={activeBooking.status !== 'Checked In'}
+                            className="p-3 bg-stone-800 hover:bg-stone-900 disabled:opacity-45 disabled:pointer-events-none text-white rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            <span>Check Out</span>
+                          </button>
+
+                          {/* 4. Edit Booking */}
+                          <button
+                            onClick={() => setIsEditingBooking(true)}
+                            className="p-3 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 border"
+                          >
+                            <Settings className="w-4 h-4" />
+                            <span>Edit Booking</span>
+                          </button>
+
+                          {/* 5. Batalkan Booking */}
+                          <button
+                            onClick={() => handleCancelBooking(activeBooking.booking_code)}
+                            disabled={activeBooking.status === 'Cancelled' || activeBooking.status === 'Completed'}
+                            className="p-3 bg-red-50 hover:bg-red-100 disabled:opacity-45 disabled:pointer-events-none text-red-600 border border-red-200 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 col-span-2 mt-1"
+                          >
+                            <AlertTriangle className="w-4 h-4" />
+                            <span>Batalkan Reservasi</span>
+                          </button>
+
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="py-8 text-center space-y-4">
+                      <p className="text-sm font-semibold text-emerald-600">Unit Kamar kosong dan siap dipesan sekarang juga.</p>
+                      <button
+                        onClick={() => {
+                          setOfflineRoomNum(room.number);
+                          setSelectedCalendarRoom(null);
+                          handleTabSelection('offline-booking');
+                        }}
+                        className="px-5 py-3 bg-brand-700 hover:bg-brand-850 text-white rounded-xl text-xs font-bold uppercase tracking-widest cursor-pointer transition-all"
+                      >
+                        Buat Booking Offline Di Sini
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Manual Room Status Override Section */}
+                  <div className="border-t border-stone-200 pt-4 mt-4 space-y-3 bg-stone-50 p-4 rounded-xl">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="text-xs font-bold text-stone-800">Ubah Status Kamar Manual</h4>
+                        <p className="text-[10px] text-stone-500">Gunakan untuk memblokir/membuka kamar di luar sistem booking.</p>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase ${
+                        room.status === 'Available' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {room.status === 'Available' ? 'KOSONG / AVAILABLE' : 'TERISI / OCCUPIED'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleManualStatusToggle(room)}
+                      className={`w-full py-2.5 px-4 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
+                        room.status === 'Available' 
+                          ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>
+                        {room.status === 'Available' ? 'Tandai Sebagai TERISI (Occupied)' : 'Tandai Sebagai KOSONG (Available)'}
+                      </span>
+                    </button>
+                  </div>
+
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* Invoice Modal Overlay */}
@@ -2160,6 +2765,55 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           lang={lang}
         />
       )}
+
+      {/* Floating Toast Notification for Real-Time Service Signals & Cafe Orders */}
+      <AnimatePresence>
+        {newSignalToast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 40, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-50 w-full max-w-sm bg-stone-950 border border-amber-500/40 text-stone-100 rounded-2xl shadow-2xl p-4 flex gap-3.5 items-start"
+          >
+            <div className="p-2.5 bg-amber-500/10 text-amber-500 rounded-xl border border-amber-500/25 shrink-0">
+              <span className="text-xl animate-bounce block">🛎️</span>
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex justify-between items-start gap-2">
+                <p className="text-[10px] font-extrabold text-amber-500 uppercase tracking-widest">
+                  {lang === 'id' ? 'PESANAN CAFE / LAYANAN BARU!' : 'NEW CAFE ORDER / REQUEST!'}
+                </p>
+                <button 
+                  onClick={() => setNewSignalToast(null)}
+                  className="text-stone-500 hover:text-stone-300 transition-colors p-0.5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm font-bold text-white leading-tight">
+                {newSignalToast.guestName} ({newSignalToast.roomNumber})
+              </p>
+              <p className="text-xs text-stone-300 leading-normal line-clamp-2">
+                {newSignalToast.details}
+              </p>
+              <div className="pt-2.5 flex gap-2">
+                <a 
+                  href="/service-signals"
+                  className="bg-amber-700 hover:bg-amber-800 text-white font-extrabold text-[10px] uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors inline-block"
+                >
+                  {lang === 'id' ? 'Papan Sinyal' : 'Service Board'}
+                </a>
+                <button
+                  onClick={() => setNewSignalToast(null)}
+                  className="bg-stone-900 hover:bg-stone-850 border border-stone-800 text-stone-400 font-bold text-[10px] uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors"
+                >
+                  {lang === 'id' ? 'Tutup' : 'Dismiss'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

@@ -104,3 +104,14 @@ export interface ActivityLog {
   activity: string;
   timestamp: string;
 }
+
+export interface ServiceSignal {
+  id: string;
+  booking_code: string;
+  room_number: string;
+  guest_name: string;
+  type: 'food' | 'message' | 'clean';
+  details: string;
+  status: 'pending' | 'preparing' | 'delivered' | 'completed';
+  created_at: string;
+}

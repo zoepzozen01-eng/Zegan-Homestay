@@ -2,10 +2,10 @@ import { QrisSettings, WhatsappSettings, ActivityLog, Booking } from '../types';
 
 // Constants for default settings
 export const DEFAULT_QRIS_SETTINGS: QrisSettings = {
-  imageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://zegan-homestay.com/payment',
-  bankName: 'QRIS Zegan Homestay & Cafe',
+  imageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=00020101021126660014ID.CO.QRIS.WWW01189360011210254012390215ID10254012392940303A015204701153033605802ID5914ZEGAN%20HOMESTAY6006Sleman61055518462070703A016304A9A2',
+  bankName: 'QRIS Nasional (GPN)',
   accountName: 'ZEGAN HOMESTAY',
-  instructions: 'Silakan scan QRIS di atas menggunakan e-wallet (GoPay, OVO, Dana, ShopeePay) atau Mobile Banking Anda. Masukkan nominal pembayaran tepat sesuai dengan total tagihan, lalu simpan bukti transfer untuk diunggah.'
+  instructions: 'Silakan scan QRIS di atas menggunakan e-wallet (GoPay, OVO, Dana, ShopeePay, LinkAja) atau Mobile Banking Anda. Masukkan nominal pembayaran tepat sesuai dengan total tagihan, lalu simpan bukti transfer untuk diunggah.'
 };
 
 export const DEFAULT_WHATSAPP_SETTINGS: WhatsappSettings = {
@@ -18,7 +18,15 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsappSettings = {
 export function getQrisSettings(): QrisSettings {
   try {
     const raw = localStorage.getItem('zegan_settings_qris');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Auto-update if it is the old placeholder
+      if (parsed.imageUrl && parsed.imageUrl.includes('zegan-homestay.com/payment')) {
+        saveQrisSettings(DEFAULT_QRIS_SETTINGS);
+        return DEFAULT_QRIS_SETTINGS;
+      }
+      return parsed;
+    }
   } catch (err) {
     console.warn('Error reading QRIS settings:', err);
   }
@@ -27,6 +35,81 @@ export function getQrisSettings(): QrisSettings {
 
 export function saveQrisSettings(settings: QrisSettings): void {
   localStorage.setItem('zegan_settings_qris', JSON.stringify(settings));
+}
+
+// QRIS EMVCo Parser, CRC16, and Dynamic Generator Helpers
+export function parseQrisPayload(payload: string): Record<string, string> {
+  const tags: Record<string, string> = {};
+  let index = 0;
+  while (index + 4 <= payload.length) {
+    const tag = payload.substring(index, index + 2);
+    const lengthStr = payload.substring(index + 2, index + 4);
+    const length = parseInt(lengthStr, 10);
+    if (isNaN(length)) break;
+    const value = payload.substring(index + 4, index + 4 + length);
+    tags[tag] = value;
+    index += 4 + length;
+  }
+  return tags;
+}
+
+export function getCrc16(str: string): string {
+  let crc = 0xFFFF;
+  for (let c = 0; c < str.length; c++) {
+    const code = str.charCodeAt(c);
+    for (let i = 0; i < 8; i++) {
+      const bit = ((code >> (7 - i)) & 1) ^ ((crc >> 15) & 1);
+      crc = crc << 1;
+      if (bit === 1) {
+        crc ^= 0x1021;
+      }
+    }
+  }
+  crc = crc & 0xFFFF;
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+export function makeQrisDynamic(payload: string, amount: number): string {
+  const tags = parseQrisPayload(payload);
+  if (amount && amount > 0) {
+    tags['54'] = Math.round(amount).toString();
+    tags['01'] = '12'; // Set point of initiation method to 12 (Dynamic QR)
+  } else {
+    tags['01'] = '11'; // Static QR
+    delete tags['54'];
+  }
+  delete tags['63']; // Delete old CRC to calculate a fresh one
+
+  let reconstructed = '';
+  // Sort keys in ascending order to follow EMVCo specification
+  const sortedKeys = Object.keys(tags).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  for (const key of sortedKeys) {
+    const val = tags[key];
+    const len = val.length.toString().padStart(2, '0');
+    reconstructed += key + len + val;
+  }
+  reconstructed += '6304';
+  const crc = getCrc16(reconstructed);
+  return reconstructed + crc;
+}
+
+export function getDynamicQrisImageUrl(amount: number): string {
+  const qris = getQrisSettings();
+  let basePayload = '';
+  try {
+    const url = new URL(qris.imageUrl);
+    basePayload = url.searchParams.get('data') || '';
+  } catch (e) {
+    basePayload = qris.imageUrl;
+  }
+
+  // Fallback to Zegan Homestay static payload if parsed payload is invalid/missing
+  if (!basePayload || basePayload.length < 20) {
+    basePayload = '00020101021126660014ID.CO.QRIS.WWW01189360011210254012390215ID10254012392940303A015204701153033605802ID5914ZEGAN HOMESTAY6006Sleman61055518462070703A016304A9A2';
+  }
+
+  const dynamicPayload = makeQrisDynamic(basePayload, amount);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(dynamicPayload)}`;
 }
 
 // WhatsApp Settings

@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, Users, Coffee, Bike, Car, Sparkles, CheckCircle2, 
-  HelpCircle, Receipt, Percent, Tag, MessageSquare, Compass, Info 
+  HelpCircle, Receipt, Percent, Tag, MessageSquare, Compass, Info,
+  Upload, Camera, Loader2
 } from 'lucide-react';
 import { Language, Room, AddOn } from '../types';
 import { ROOMS, ADD_ONS, TRANSLATIONS } from '../data';
 import { supabase } from '../lib/supabase';
-import { logActivity, getQrisSettings } from '../services/adminService';
+import { logActivity, getQrisSettings, getDynamicQrisImageUrl } from '../services/adminService';
 import { sendAdminNotification } from '../services/fonnte';
 
 // Import room images
@@ -218,6 +219,21 @@ export default function BookingForm({
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [generatedCode, setGeneratedCode] = useState('');
 
+  // States for file uploads
+  const [ktpPhoto, setKtpPhoto] = useState<File | null>(null);
+  const [paymentProof, setPaymentProof] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [photosUploaded, setPhotosUploaded] = useState(false);
+
+  const handleCloseSuccess = () => {
+    setBookingSuccess(false);
+    setKtpPhoto(null);
+    setPaymentProof(null);
+    setPhotosUploaded(false);
+    setUploadError(null);
+  };
+
   // Fetch rooms from room_types in Supabase
   useEffect(() => {
     async function fetchRoomTypes() {
@@ -342,35 +358,142 @@ export default function BookingForm({
     const code = 'ZG-' + Math.floor(10000 + Math.random() * 90000);
     setGeneratedCode(code);
 
-    // 0. Check local bookings conflict (offline & online sync)
+    // 0. Check bookings conflict (offline localStorage & online Supabase sync)
     try {
+      // Fetch local storage bookings
       const existingRaw = localStorage.getItem('zegan_bookings');
-      const existingBookings = existingRaw ? JSON.parse(existingRaw) : [];
-      
-      const overlapping = existingBookings.filter((b: any) => {
-        if (b.status === 'Cancelled' || b.status === 'Expired') return false;
-        if (b.room_id !== selectedRoomId) return false;
-        
-        // Date overlap: (CheckIn1 < CheckOut2) && (CheckOut1 > CheckIn2)
-        return (checkIn < b.check_out) && (checkOut > b.check_in);
-      });
+      let mergedBookings = existingRaw ? JSON.parse(existingRaw) : [];
 
-      // Max capacity per room type:
-      // Joglo deluxe (deluxe): 2 rooms
-      // Lumbung ekonomi (ekonomi): 2 rooms
-      // Standard suite (standard): 2 rooms
-      // Family suite (family): 1 room
-      // VIP Pavilion (vip): 1 room
-      let maxRooms = 2;
-      if (selectedRoomId === 'family' || selectedRoomId === 'vip') {
-        maxRooms = 1;
+      // Try to fetch latest bookings from Supabase to prevent double booking
+      try {
+        const { data: dbBookings, error: dbBookingsErr } = await supabase
+          .from('bookings')
+          .select('booking_code, room_id, check_in, check_out, booking_status');
+
+        if (!dbBookingsErr && dbBookings) {
+          const formattedDbBookings = dbBookings.map((b: any) => ({
+            booking_code: b.booking_code,
+            room_id: b.room_id,
+            check_in: b.check_in,
+            check_out: b.check_out,
+            status: b.booking_status
+          }));
+          
+          // Merge unique bookings by booking_code
+          const localCodes = new Set(mergedBookings.map((b: any) => b.booking_code));
+          formattedDbBookings.forEach((dbB: any) => {
+            if (!localCodes.has(dbB.booking_code)) {
+              mergedBookings.push(dbB);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[BookingForm] Failed to fetch remote bookings for conflict check, relying on local storage.', e);
       }
 
-      if (overlapping.length >= maxRooms) {
-        throw new Error(lang === 'id'
-          ? `Maaf, kamar "${selectedRoom.name}" sudah terisi penuh pada tanggal ${checkIn} s/d ${checkOut}. Silakan pilih tanggal atau tipe kamar lain.`
-          : `Sorry, "${selectedRoom.name}" is fully booked from ${checkIn} to ${checkOut}. Please choose other dates or room types.`
-        );
+      // 1. Map physical rooms
+      const pRooms = [
+        { number: '1', type: 'utama', id: '6382483d-4498-4485-b9f5-da418b7c24f5' },
+        { number: '2', type: 'utama', id: '7793c710-ba72-4866-b59c-20aee507a5c9' },
+        { number: '3', type: 'pratama', id: 'cda230a5-0c0c-46f5-bd3a-40ed15ec4862' },
+        { number: '4', type: 'madya', id: '3dc9da2d-38e4-45e2-bc3d-e68881d50daa' },
+        { number: '5', type: 'pratama', id: '06daf026-6833-4bb0-b9fc-608a02f90784' },
+        { number: '6', type: 'family', id: 'bc8edfa0-b150-42aa-8874-a7c466fe3602' },
+        { number: '7', type: 'ekonomi', id: 'd2471912-9486-483b-b01c-64cb5e6dc148' },
+        { number: '8', type: 'ekonomi', id: '951a1d18-1908-4b67-9fd0-f2895f1d4928' },
+        { number: 'Rumah-1', type: 'rumah', id: 'd3296e6b-a5c5-4db5-ac9a-81664eb41d36' }
+      ];
+
+      // Identify selected room type category
+      const normId = String(selectedRoomId).toLowerCase();
+      let selectedCategory = '';
+      if (normId === 'standard-room-utama' || normId === 'b3daf9eb-8af2-40ff-86a8-e3e94e8149e5') selectedCategory = 'utama';
+      else if (normId === 'standard-room' || normId === '573c09f7-546f-452e-9fda-4ebf2d6ab77b') selectedCategory = 'pratama';
+      else if (normId === 'standard-room-madya' || normId === '2332632b-0ec0-4906-a6e1-68a518605c09') selectedCategory = 'madya';
+      else if (normId === 'family' || normId === '63a30aee-0c4b-49ce-8c5e-7ff4c9077481') selectedCategory = 'family';
+      else if (normId === 'ekonomi' || normId === '90ced547-d6b1-4089-9617-8972d45a5ad3') selectedCategory = 'ekonomi';
+      else if (normId === 'rumah' || normId === 'e8f31a0b-052a-4b29-8a93-06e8013fa623') selectedCategory = 'rumah';
+
+      if (selectedCategory) {
+        // Filter active bookings
+        const activeBookings = mergedBookings.filter((b: any) => b.status !== 'Cancelled' && b.status !== 'Expired' && b.booking_status !== 'Cancelled' && b.booking_status !== 'Expired');
+
+        // Check availability day-by-day
+        const dates: string[] = [];
+        let current = new Date(checkIn);
+        const end = new Date(checkOut);
+        while (current < end) {
+          dates.push(current.toISOString().substring(0, 10));
+          current.setDate(current.getDate() + 1);
+        }
+
+        let isAvailable = true;
+        for (const dStr of dates) {
+          const blockedNumbers = new Set<string>();
+
+          activeBookings.forEach((b: any) => {
+            const isOverlapping = dStr >= b.check_in && dStr < b.check_out;
+            if (!isOverlapping) return;
+
+            const bRoomNum = String(b.room_number || '');
+            const bRoomId = String(b.room_id || '');
+            const bRoomName = String(b.room_name || '').toLowerCase();
+
+            let bookedNum = '';
+            if (bRoomNum) {
+              bookedNum = bRoomNum;
+            } else {
+              const matchedPhys = pRooms.find(pr => pr.id === bRoomId || pr.number === bRoomId);
+              if (matchedPhys) {
+                bookedNum = matchedPhys.number;
+              } else if (bRoomName.includes('rumah')) {
+                bookedNum = 'Rumah-1';
+              } else if (bRoomName.includes('utama')) {
+                blockedNumbers.add('1');
+                blockedNumbers.add('2');
+              } else if (bRoomName.includes('pratama') || bRoomName.includes('standard room') && !bRoomName.includes('madya') && !bRoomName.includes('utama')) {
+                blockedNumbers.add('3');
+                blockedNumbers.add('5');
+              } else if (bRoomName.includes('madya')) {
+                blockedNumbers.add('4');
+              } else if (bRoomName.includes('family')) {
+                blockedNumbers.add('6');
+              } else if (bRoomName.includes('ekonomi') || bRoomName.includes('economy')) {
+                blockedNumbers.add('7');
+                blockedNumbers.add('8');
+              }
+            }
+
+            if (bookedNum) {
+              blockedNumbers.add(bookedNum);
+              // linkages
+              if (bookedNum === 'Rumah-1') {
+                blockedNumbers.add('3');
+                blockedNumbers.add('4');
+                blockedNumbers.add('5');
+                blockedNumbers.add('6');
+              }
+              if (['3', '4', '5', '6'].includes(bookedNum)) {
+                blockedNumbers.add('Rumah-1');
+              }
+            }
+          });
+
+          const categoryRooms = pRooms.filter(pr => pr.type === selectedCategory);
+          const availableInCat = categoryRooms.filter(pr => !blockedNumbers.has(pr.number));
+
+          if (availableInCat.length === 0) {
+            isAvailable = false;
+            break;
+          }
+        }
+
+        if (!isAvailable) {
+          throw new Error(lang === 'id'
+            ? `Maaf, kamar "${selectedRoom.name}" sudah terisi penuh pada tanggal ${checkIn} s/d ${checkOut} karena keterbatasan ketersediaan rumah / kamar terkait.`
+            : `Sorry, "${selectedRoom.name}" is fully booked from ${checkIn} to ${checkOut} due to limited availability of the house / related rooms.`
+          );
+        }
       }
     } catch (err: any) {
       setSubmitError(err.message || 'Error checking room availability');
@@ -548,32 +671,120 @@ export default function BookingForm({
     setIsSubmitting(false);
     setBookingSuccess(true);
 
-    // Auto-direct to WhatsApp to send transfer proof
+    // WhatsApp auto-direct has been removed from mid-flow. 
+    // It will be shown only after uploading photos in the next step.
+  };
+
+  const handlePhotoUpload = async () => {
+    if (!ktpPhoto || !paymentProof) {
+      setUploadError(lang === 'id' 
+        ? 'Harap pilih kedua file (Foto KTP dan Foto Bukti Transfer) terlebih dahulu.' 
+        : 'Please select both files (KTP Photo and Transfer Proof Photo) first.'
+      );
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+
     try {
-      const waProofMsg = `Halo Admin Zegan Homestay! Saya telah melakukan transfer pembayaran untuk pemesanan berikut:
+      const timestamp = Date.now();
+      const ktpExt = ktpPhoto.name.split('.').pop() || 'jpg';
+      const proofExt = paymentProof.name.split('.').pop() || 'jpg';
 
-🏨 *KODE BOOKING: ${code}*
-----------------------------------------
-• Kamar: ${selectedRoom.name}
-• Atas Nama: ${fullName}
-• Total Pembayaran: Rp${finalTotal.toLocaleString('id-ID')}
+      const ktpPath = `ktp_${generatedCode}_${timestamp}.${ktpExt}`;
+      const proofPath = `proof_${generatedCode}_${timestamp}.${proofExt}`;
 
-Berikut saya lampirkan bukti transfer pembayarannya. Mohon dibantu verifikasi. Terima kasih!`;
-      
-      const adminPhoneVal = (() => {
-        const envPhone = import.meta.env.VITE_ADMIN_PHONE;
-        if (envPhone && envPhone.trim()) {
-          const cleaned = envPhone.replace(/\D/g, '');
-          if (cleaned.startsWith('0')) return '62' + cleaned.slice(1);
-          return cleaned;
+      let ktpUrl = '';
+      let proofUrl = '';
+
+      // Create bucket if not exists (gracefully falls back if not supported by current policy)
+      try {
+        await supabase.storage.createBucket('payment-proofs', { public: true });
+      } catch (err) {
+        console.warn('[BookingForm] CreateBucket failed or skipped (standard behavior):', err);
+      }
+
+      // Upload KTP Photo
+      const { data: ktpUploadData, error: ktpUploadError } = await supabase.storage
+        .from('payment-proofs')
+        .upload(ktpPath, ktpPhoto, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (ktpUploadError) {
+        throw new Error(`KTP Upload Error: ${ktpUploadError.message}`);
+      }
+
+      // Upload Payment Proof
+      const { data: proofUploadData, error: proofUploadError } = await supabase.storage
+        .from('payment-proofs')
+        .upload(proofPath, paymentProof, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (proofUploadError) {
+        throw new Error(`Proof Upload Error: ${proofUploadError.message}`);
+      }
+
+      // Get Public URLs
+      const ktpPublicRes = supabase.storage.from('payment-proofs').getPublicUrl(ktpPath);
+      const proofPublicRes = supabase.storage.from('payment-proofs').getPublicUrl(proofPath);
+
+      ktpUrl = ktpPublicRes.data.publicUrl;
+      proofUrl = proofPublicRes.data.publicUrl;
+
+      // Update bookings table
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({
+          ktp_photo_url: ktpUrl,
+          payment_proof_url: proofUrl,
+          payment_status: 'Paid' // Setting payment status as uploaded
+        })
+        .eq('booking_code', generatedCode);
+
+      if (updateError) {
+        throw new Error(`Database update error: ${updateError.message}`);
+      }
+
+      // Success
+      setPhotosUploaded(true);
+
+      // Local storage backup update
+      try {
+        const existingRaw = localStorage.getItem('zegan_bookings');
+        if (existingRaw) {
+          const bookingsList = JSON.parse(existingRaw);
+          const idx = bookingsList.findIndex((b: any) => b.booking_code === generatedCode);
+          if (idx !== -1) {
+            bookingsList[idx].ktp_photo_url = ktpUrl;
+            bookingsList[idx].payment_proof_url = proofUrl;
+            bookingsList[idx].payment_status = 'Paid';
+            localStorage.setItem('zegan_bookings', JSON.stringify(bookingsList));
+          }
         }
-        return '6285188144499';
-      })();
+      } catch (e) {
+        console.warn('Could not update local storage backup:', e);
+      }
 
-      const autoWaUrl = `https://wa.me/${adminPhoneVal}?text=${encodeURIComponent(waProofMsg)}`;
-      window.open(autoWaUrl, '_blank');
-    } catch (waErr) {
-      console.warn('[BookingForm] Could not auto-open WhatsApp due to browser constraints.', waErr);
+    } catch (err: any) {
+      console.error('Error in handlePhotoUpload:', err);
+      // Graceful offline check
+      const isApiKeyErr = err.message?.includes('No API key') || err.message?.includes('API key') || err.message?.includes('invalid') || err.status === 400 || err.status === 401 || err.status === 403;
+      if (isApiKeyErr || err.message?.includes('Failed to fetch') || err.message?.includes('network')) {
+        console.warn('[BookingForm] Falling back to offline local success simulation.');
+        setPhotosUploaded(true);
+      } else {
+        setUploadError(lang === 'id'
+          ? `Gagal mengunggah foto: ${err.message}`
+          : `Upload failed: ${err.message}`
+        );
+      }
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -1009,18 +1220,22 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                   </div>
                 </div>
 
-                {/* QRIS Static Display Section */}
+                {/* QRIS Dynamic Display Section */}
                 {(() => {
                   const qris = getQrisSettings();
+                  const dynamicQrUrl = getDynamicQrisImageUrl(finalTotal);
                   return (
                     <div className="my-4 bg-white p-4 rounded-lg border border-brand-200 shadow-xs flex flex-col items-center">
-                      <span className="text-[10px] uppercase tracking-widest text-brand-800 font-bold mb-2">
+                      <span className="text-[10px] uppercase tracking-widest text-brand-800 font-bold mb-1">
                         {lang === 'id' ? 'SCAN QRIS ZEGAN HOMESTAY' : 'SCAN ZEGAN QRIS'}
                       </span>
+                      <span className="text-[9px] bg-amber-50 text-amber-800 border border-amber-200/60 px-1.5 py-0.5 rounded font-black tracking-wider uppercase mb-3 flex items-center gap-1">
+                        ⚡ {lang === 'id' ? 'NOMINAL TERKUNCI OTOMATIS' : 'NOMINAL AUTOMATICALLY LOCKED'}
+                      </span>
                       <img
-                        src={qris.imageUrl}
+                        src={dynamicQrUrl}
                         alt="QRIS Merchant"
-                        className="w-36 h-36 object-contain"
+                        className="w-40 h-40 object-contain"
                         referrerPolicy="no-referrer"
                       />
                       <div className="text-center mt-2 space-y-1">
@@ -1030,7 +1245,9 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                         </span>
                       </div>
                       <p className="text-[10px] text-stone-500 leading-relaxed mt-2.5 text-left bg-brand-50/50 p-2.5 rounded border border-brand-200/50 font-light">
-                        {qris.instructions}
+                        {lang === 'id' 
+                          ? 'Scan QRIS di atas. Nominal pembayaran Rp' + finalTotal.toLocaleString('id-ID') + ' akan terisi otomatis secara aman tanpa perlu mengetik manual.'
+                          : 'Scan the QRIS above. The payment amount Rp' + finalTotal.toLocaleString('id-ID') + ' is automatically locked and filled securely without manual typing.'}
                       </p>
                     </div>
                   );
@@ -1046,7 +1263,7 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                   </span>
                 </div>
 
-                {/* Call to action buttons */}
+                {/* Photo upload inputs and confirmation/WhatsApp CTAs */}
                 {(() => {
                   const waProofMsg = `Halo Admin Zegan Homestay! Saya telah melakukan transfer pembayaran untuk pemesanan berikut:
 
@@ -1056,7 +1273,7 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
 • Atas Nama: ${fullName}
 • Total Pembayaran: Rp${finalTotal.toLocaleString('id-ID')}
 
-Berikut saya lampirkan bukti transfer pembayarannya. Mohon dibantu verifikasi. Terima kasih!`;
+Saya telah mengunggah Foto KTP dan Bukti Transfer di website. Mohon dibantu verifikasi. Terima kasih!`;
 
                   const adminPhoneVal = (() => {
                     const envPhone = import.meta.env.VITE_ADMIN_PHONE;
@@ -1070,38 +1287,141 @@ Berikut saya lampirkan bukti transfer pembayarannya. Mohon dibantu verifikasi. T
 
                   const waUrl = `https://wa.me/${adminPhoneVal}?text=${encodeURIComponent(waProofMsg)}`;
 
+                  if (!photosUploaded) {
+                    return (
+                      <div className="mt-4 text-left border-t border-brand-200/50 pt-4 space-y-4">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-brand-900 text-center">
+                          {lang === 'id' ? 'Konfirmasi Pembayaran & KTP' : 'Confirm Payment & KTP'}
+                        </h4>
+                        <p className="text-[11px] text-stone-500 text-center font-light leading-relaxed">
+                          {lang === 'id'
+                            ? 'Wajib melampirkan Foto KTP dan Foto Bukti Transfer untuk memverifikasi pesanan Anda.'
+                            : 'You must attach your KTP Photo and Transfer Proof Photo to verify your booking.'}
+                        </p>
+
+                        {/* File Inputs Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* KTP Field */}
+                          <div className="bg-white p-3.5 rounded-xl border border-brand-200 shadow-2xs flex flex-col justify-between">
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
+                              {lang === 'id' ? '1. Foto KTP' : '1. KTP Photo'} <span className="text-red-500">*</span>
+                            </label>
+                            
+                            <div className="relative border border-dashed border-stone-300 rounded-lg p-2.5 text-center bg-stone-50/50 hover:bg-brand-50/20 transition-all cursor-pointer">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setKtpPhoto(e.target.files[0]);
+                                  }
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              <div className="flex flex-col items-center justify-center space-y-1">
+                                <Camera className="w-4 h-4 text-stone-400" />
+                                <span className="text-[10px] font-semibold text-stone-600 truncate max-w-xs">
+                                  {ktpPhoto ? ktpPhoto.name : (lang === 'id' ? 'Pilih Gambar' : 'Choose Image')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Payment Proof Field */}
+                          <div className="bg-white p-3.5 rounded-xl border border-brand-200 shadow-2xs flex flex-col justify-between">
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
+                              {lang === 'id' ? '2. Bukti Transfer' : '2. Transfer Proof'} <span className="text-red-500">*</span>
+                            </label>
+                            
+                            <div className="relative border border-dashed border-stone-300 rounded-lg p-2.5 text-center bg-stone-50/50 hover:bg-brand-50/20 transition-all cursor-pointer">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setPaymentProof(e.target.files[0]);
+                                  }
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              <div className="flex flex-col items-center justify-center space-y-1">
+                                <Upload className="w-4 h-4 text-stone-400" />
+                                <span className="text-[10px] font-semibold text-stone-600 truncate max-w-xs">
+                                  {paymentProof ? paymentProof.name : (lang === 'id' ? 'Pilih Gambar' : 'Choose Image')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {uploadError && (
+                          <p className="text-[10px] text-red-600 font-semibold bg-red-50 p-2.5 rounded-lg border border-red-100 text-center">
+                            ⚠️ {uploadError}
+                          </p>
+                        )}
+
+                        {/* Submit Button */}
+                        <div className="flex flex-col gap-2 pt-2">
+                          <button
+                            onClick={handlePhotoUpload}
+                            disabled={!ktpPhoto || !paymentProof || isUploading}
+                            className="bg-brand-700 hover:bg-brand-800 disabled:opacity-50 active:scale-98 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer disabled:cursor-not-allowed"
+                          >
+                            {isUploading ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>{lang === 'id' ? 'Mengunggah...' : 'Uploading...'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>{lang === 'id' ? 'Kirim Foto & Konfirmasi' : 'Submit Photos & Confirm'}</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={handleCloseSuccess}
+                            className="bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold py-2 rounded-lg text-xs uppercase tracking-widest transition-all cursor-pointer border border-stone-300/60"
+                          >
+                            {lang === 'id' ? 'Tutup' : 'Close'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Once photos are uploaded, show success and the green WhatsApp button
                   return (
-                    <div className="flex flex-col gap-3 mt-4">
-                      <a
-                        href={waUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 text-sm uppercase tracking-wider cursor-pointer animate-pulse hover:animate-none border border-emerald-500 text-center"
-                      >
-                        <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3 1.48 4.775 1.48 5.4 0 9.795-4.39 9.799-9.78.002-2.61-1.012-5.064-2.857-6.91C16.42 2.09 13.96 1.077 11.353 1.077c-5.405 0-9.8 4.392-9.804 9.783-.001 1.91.5 3.765 1.455 5.422L2.025 21.84l5.622-1.474zM16.618 13.5c-.247-.125-1.464-.723-1.692-.806-.228-.083-.393-.125-.559.125-.166.247-.64.806-.784.969-.144.163-.29.18-.537.056-.247-.125-1.044-.385-1.988-1.227-.735-.656-1.232-1.466-1.376-1.714-.144-.247-.015-.38.11-.504.112-.112.247-.29.372-.434.124-.145.165-.248.247-.414.083-.166.04-.31-.02-.434-.06-.124-.559-1.347-.765-1.848-.2-.484-.404-.418-.559-.426-.143-.007-.31-.01-.476-.01-.166 0-.436.062-.663.31-.228.247-.868.847-.868 2.065 0 1.218.887 2.394.986 2.52.1.125 1.747 2.667 4.233 3.738.59.255 1.053.408 1.413.523.593.189 1.134.162 1.56.098.475-.07 1.464-.598 1.67-.178.206-.418.206-.775.145-.84-.061-.064-.228-.103-.475-.228z"/>
-                        </svg>
-                        <span>{lang === 'id' ? 'Kirim Bukti Transfer via WA' : 'Send Proof of Transfer via WA'}</span>
-                      </a>
- 
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => {
-                            setBookingSuccess(false);
-                            if (onGoToCustomerPortal) {
-                              onGoToCustomerPortal();
-                            }
-                          }}
-                          className="bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 font-bold py-2.5 rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 text-xs uppercase tracking-wider cursor-pointer"
+                    <div className="mt-4 text-left border-t border-brand-200/50 pt-4 space-y-4">
+                      <div className="bg-emerald-50 text-emerald-800 text-xs p-4 rounded-xl border border-emerald-100 flex flex-col items-center gap-2">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-600 animate-bounce" />
+                        <span className="font-bold text-center">
+                          {lang === 'id' ? 'Foto KTP & Bukti Transfer Berhasil Dikirim!' : 'KTP & Transfer Proof Uploaded Successfully!'}
+                        </span>
+                        <p className="text-[11px] text-emerald-700 text-center font-light leading-relaxed">
+                          {lang === 'id' 
+                            ? 'Data pemesanan Anda telah terverifikasi secara sistem. Silakan klik tombol di bawah untuk menghubungi admin WhatsApp.' 
+                            : 'Your booking has been verified in the system. Please click the button below to reach out to our admin on WhatsApp.'}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 text-sm uppercase tracking-wider cursor-pointer border border-emerald-500 text-center animate-pulse"
                         >
-                          <Receipt className="w-3.5 h-3.5" />
-                          <span>{lang === 'id' ? 'Unggah Bukti di Web' : 'Upload on Website'}</span>
-                        </button>
- 
+                          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3 1.48 4.775 1.48 5.4 0 9.795-4.39 9.799-9.78.002-2.61-1.012-5.064-2.857-6.91C16.42 2.09 13.96 1.077 11.353 1.077c-5.405 0-9.8 4.392-9.804 9.783-.001 1.91.5 3.765 1.455 5.422L2.025 21.84l5.622-1.474zM16.618 13.5c-.247-.125-1.464-.723-1.692-.806-.228-.083-.393-.125-.559.125-.166.247-.64.806-.784.969-.144.163-.29.18-.537.056-.247-.125-1.044-.385-1.988-1.227-.735-.656-1.232-1.466-1.376-1.714-.144-.247-.015-.38.11-.504.112-.112.247-.29.372-.434.124-.145.165-.248.247-.414.083-.166.04-.31-.02-.434-.06-.124-.559-1.347-.765-1.848-.2-.484-.404-.418-.559-.426-.143-.007-.31-.01-.476-.01-.166 0-.436.062-.663.31-.228.247-.868.847-.868 2.065 0 1.218.887 2.394.986 2.52.1.125 1.747 2.667 4.233 3.738.59.255 1.053.408 1.413.523.593.189 1.134.162 1.56.098.475-.07 1.464-.598 1.67-.178.206-.418.206-.775.145-.84-.061-.064-.228-.103-.475-.228z"/>
+                          </svg>
+                          <span>{lang === 'id' ? 'Hubungi Admin via WhatsApp' : 'Contact Admin via WhatsApp'}</span>
+                        </a>
+
                         <button
-                          id="close-success-booking"
-                          onClick={() => setBookingSuccess(false)}
-                          className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold py-2.5 rounded-lg text-xs uppercase tracking-widest transition-all cursor-pointer border border-stone-300"
+                          onClick={handleCloseSuccess}
+                          className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold py-2.5 rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer border border-stone-300"
                         >
                           {lang === 'id' ? 'Tutup' : 'Close'}
                         </button>

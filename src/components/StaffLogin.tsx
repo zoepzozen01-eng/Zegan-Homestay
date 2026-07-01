@@ -264,6 +264,18 @@ export default function StaffLogin({ lang, onLoginSuccess, onGoHome }: StaffLogi
           </button>
         </div>
 
+        {/* Fast Service Signals Monitor access for gaptek users */}
+        <div className="mt-4 border-t border-stone-800/60 pt-4 text-center space-y-3">
+          <button
+            type="button"
+            onClick={() => window.location.pathname = '/service-signals'}
+            className="w-full bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800/60 font-bold py-3 rounded-xl text-[11px] uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-101 shadow-inner"
+          >
+            <span className="text-sm">🛎️</span>
+            <span>{lang === 'id' ? 'Monitor Sinyal & Layanan Kamar' : 'Service Signals & Room Monitor'}</span>
+          </button>
+        </div>
+
         <div className="mt-4 text-center">
           <button
             onClick={onGoHome}
