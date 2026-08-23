@@ -13,18 +13,29 @@ interface HeroProps {
 export default function Hero({ lang, onQuickSearch }: HeroProps) {
   const t = TRANSLATIONS[lang];
   
-  // Set default search dates (tomorrow & day after)
+  // Set default search dates (tomorrow & 1 day after = 1 day stay)
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const dayAfter = new Date(tomorrow);
-  dayAfter.setDate(dayAfter.getDate() + 2);
+  const nextDay = new Date(tomorrow);
+  nextDay.setDate(nextDay.getDate() + 1);
 
   const formatDate = (date: Date) => date.toISOString().split('T')[0];
 
   const [checkIn, setCheckIn] = useState(formatDate(tomorrow));
-  const [checkOut, setCheckOut] = useState(formatDate(dayAfter));
+  const [checkOut, setCheckOut] = useState(formatDate(nextDay));
   const [guests, setGuests] = useState(2);
+
+  const handleCheckInChange = (newDate: string) => {
+    setCheckIn(newDate);
+    const inDate = new Date(newDate);
+    const outDate = new Date(checkOut);
+    if (isNaN(outDate.getTime()) || outDate <= inDate) {
+      const next = new Date(newDate);
+      next.setDate(next.getDate() + 1);
+      setCheckOut(formatDate(next));
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +109,7 @@ export default function Hero({ lang, onQuickSearch }: HeroProps) {
                 type="date"
                 min={formatDate(today)}
                 value={checkIn}
-                onChange={(e) => setCheckIn(e.target.value)}
+                onChange={(e) => handleCheckInChange(e.target.value)}
                 className="w-full px-4 py-3 rounded-lg border border-brand-200 bg-brand-50 text-brand-950 text-sm focus:ring-2 focus:ring-brand-600 focus:outline-hidden font-medium"
                 required
               />

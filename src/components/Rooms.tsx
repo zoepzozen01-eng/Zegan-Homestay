@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Maximize, Users, Star, ArrowRight, Eye, CheckCircle2 } from 'lucide-react';
 import { Room, Language } from '../types';
 import { ROOMS, TRANSLATIONS } from '../data';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseDebugInfo } from '../lib/supabase';
 
 // Import room images
 import roomEkonomi from '../assets/images/room_ekonomi_1782631326725.jpg';
@@ -114,12 +114,21 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
       try {
         setLoading(true);
         setDbError(null);
+
+        // Check if Supabase credentials are configured
+        if (!supabaseDebugInfo.isValidUrl || !supabaseDebugInfo.keyDefined) {
+          setRooms(ROOMS);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('room_types')
           .select('id, name, description, weekday_price, weekend_price, max_guest');
 
         if (error) {
-          throw error;
+          console.warn('Supabase room_types query unavailable, using static catalog:', error.message);
+          setRooms(ROOMS);
+          return;
         }
 
         if (data && data.length > 0) {
@@ -147,8 +156,7 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
           setRooms(ROOMS);
         }
       } catch (err: any) {
-        console.error('Error fetching room_types from Supabase:', err);
-        setDbError(err?.message || String(err));
+        console.warn('Fallback to local catalog due to Supabase error:', err);
         setRooms(ROOMS);
       } finally {
         setLoading(false);
@@ -220,16 +228,27 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
                     <span>{room.rating.toFixed(1)}</span>
                   </div>
 
+                  {/* Room Number Badge */}
+                  {room.roomNumbers && (
+                    <div className="absolute top-4 right-4 bg-brand-950/80 text-white backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] font-medium tracking-wide">
+                      No: {room.roomNumbers}
+                    </div>
+                  )}
+
                   {/* Price Display */}
-                  <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end text-white">
+                  <div className="absolute bottom-3 left-4 right-4 flex justify-between items-end text-white">
                     <div>
-                      <span className="text-[10px] text-stone-200 block uppercase tracking-wider font-semibold">
-                        {lang === 'id' ? 'Mulai Dari' : 'From'}
-                      </span>
-                      <span className="text-xl sm:text-2xl font-serif font-normal text-white">
-                        Rp{room.price.toLocaleString('id-ID')}
-                      </span>
-                      <span className="text-xs text-stone-200"> / {t.perNight}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg sm:text-xl font-serif font-bold text-white">
+                          Rp{room.price.toLocaleString('id-ID')}
+                        </span>
+                        <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded text-stone-100 font-sans">
+                          Weekday
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-200 mt-0.5 flex items-center gap-1.5">
+                        <span>Weekend: <strong className="font-semibold text-white">Rp{(room.weekendPrice || room.weekend_price || room.price).toLocaleString('id-ID')}</strong></span>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -15,94 +15,114 @@ import drinkWedangUwuh from './assets/images/drink_wedang_uwuh_1782631928385.jpg
 
 export const ROOMS: Room[] = [
   {
-    id: 'ekonomi',
-    name: 'Kamar Ekonomi',
-    price: 150000,
-    description: {
-      id: 'Pilihan hemat dengan suasana klasik pedesaan Jawa yang tenang. Dilengkapi dengan meja kerja kayu tradisional, kipas angin, akses WiFi kencang 100 Mbps, dan kamar mandi luar/bersama.',
-      en: 'A budget-friendly option featuring a calm, classic Javanese rustic atmosphere. Equipped with a traditional wooden desk, fan, high-speed 100 Mbps WiFi, and a shared bathroom.'
-    },
-    image: roomEkonomi,
-    size: '12 m²',
-    capacity: 1,
-    bedType: {
-      id: '1 Kasur Single',
-      en: '1 Single Bed'
-    },
-    amenities: ['wifi', 'garden-view'],
-    rating: 4.6
-  },
-  {
-    id: 'standard-room',
-    name: 'Standard Room',
-    price: 200000,
-    description: {
-      id: 'Kamar Standard yang nyaman dan hangat. Menawarkan tempat tidur berseprai kotak-kotak biru, gorden tradisional, kipas angin/AC, WiFi kencang 100 Mbps, dan kamar mandi pribadi.',
-      en: 'Comfortable and warm Standard Room. Features a double bed with cozy blue checkered sheets, traditional curtains, fan/AC, high-speed 100 Mbps WiFi, and a private bathroom.'
-    },
-    image: roomStandard,
-    size: '16 m²',
-    capacity: 2,
-    bedType: {
-      id: '1 Kasur Double',
-      en: '1 Double Bed'
-    },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
-    rating: 4.7
-  },
-  {
-    id: 'standard-room-madya',
-    name: 'Standard Room Madya',
-    price: 250000,
-    description: {
-      id: 'Kamar Standard Madya yang menawarkan kenyamanan ekstra dengan tempat tidur berselimut hitam elegan, sandaran kepala kulit, AC, TV layar datar, WiFi kencang 100 Mbps, dan kamar mandi pribadi.',
-      en: 'Standard Room Madya offering extra comfort with an elegant black bedsheet, leather padded headboard, AC, flat-screen TV, high-speed 100 Mbps WiFi, and a private bathroom.'
-    },
-    image: roomStandardMadya,
-    size: '18 m²',
-    capacity: 2,
-    bedType: {
-      id: '1 Kasur Double',
-      en: '1 Double Bed'
-    },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
-    rating: 4.8
-  },
-  {
-    id: 'family',
-    name: 'Family Room',
-    price: 400000,
-    description: {
-      id: 'Kamar Keluarga luas dengan nuansa Jawa klasik yang kental. Dilengkapi dengan dua ranjang kayu (1 Double & 1 Single), lemari kayu jati, kipas angin/AC, jendela besar berpemandangan asri, dan kamar mandi pribadi.',
-      en: 'Spacious Family Room with a strong classic Javanese atmosphere. Features two wooden beds (1 Double & 1 Single), teak wood wardrobe, fan/AC, large windows with scenic views, and a private bathroom.'
-    },
-    image: roomFamily,
-    size: '28 m²',
-    capacity: 3,
-    bedType: {
-      id: '1 Kasur Double & 1 Kasur Single',
-      en: '1 Double Bed & 1 Single Bed'
-    },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view', 'fridge'],
-    rating: 4.9
-  },
-  {
     id: 'standard-room-utama',
     name: 'Standard Room Utama',
-    price: 300000,
+    price: 200000,
+    weekdayPrice: 200000,
+    weekendPrice: 250000,
+    weekend_price: 250000,
+    roomNumbers: '1 & 2',
     description: {
-      id: 'Kamar tipe Utama yang modern dan lengkap. Menawarkan AC dingin, TV layar datar, WiFi kencang 100 Mbps, tempat tidur berseprai motif hitam-emas mewah, lantai keramik hitam eksklusif, serta kamar mandi dalam dengan wastafel modern.',
-      en: 'Modern and fully equipped Standard Room Utama. Features cool air conditioning (AC), flat-screen TV, high-speed 100 Mbps WiFi, luxury black-gold patterned bedsheet, exclusive black tiled floors, and an en-suite bathroom with a modern sink.'
+      id: 'Kamar tipe Utama yang modern dan lengkap. Dilengkapi Double Bed, AC, Smart TV, Kamar Mandi Dalam dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Modern and fully equipped Standard Room Utama. Features Double Bed, AC, Smart TV, Private En-suite Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
     },
     image: roomStandardUtama,
     size: '20 m²',
     capacity: 2,
     bedType: {
-      id: '1 Kasur Double',
-      en: '1 Double Bed'
+      id: 'Double Bed',
+      en: 'Double Bed'
     },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
+    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
     rating: 4.9
+  },
+  {
+    id: 'standard-room-madya',
+    name: 'Standard Room Madya',
+    price: 175000,
+    weekdayPrice: 175000,
+    weekendPrice: 200000,
+    weekend_price: 200000,
+    roomNumbers: '4',
+    description: {
+      id: 'Kamar Standard Madya yang menawarkan kenyamanan ekstra dengan Double Bed, AC, Smart TV bersama, Kamar Mandi bersama dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Standard Room Madya offering extra comfort with Double Bed, AC, Shared Smart TV, Shared Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+    },
+    image: roomStandardMadya,
+    size: '18 m²',
+    capacity: 2,
+    bedType: {
+      id: 'Double Bed',
+      en: 'Double Bed'
+    },
+    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    rating: 4.8
+  },
+  {
+    id: 'standard-room-pratama',
+    name: 'Standard Room Pratama',
+    price: 150000,
+    weekdayPrice: 150000,
+    weekendPrice: 175000,
+    weekend_price: 175000,
+    roomNumbers: '3 & 5',
+    description: {
+      id: 'Kamar Standard Pratama yang nyaman. Kamar 3 (Double bed tanpa dipan) & Kamar 5 (Twin bed sorong). Dilengkapi AC, Smart TV bersama, Kamar Mandi bersama dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Comfortable Standard Room Pratama. Room 3 (Double bed without frame) & Room 5 (Twin pull-out bed). Features AC, Shared Smart TV, Shared Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+    },
+    image: roomStandard,
+    size: '16 m²',
+    capacity: 2,
+    bedType: {
+      id: 'Double Bed / Twin Bed',
+      en: 'Double Bed / Twin Bed'
+    },
+    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    rating: 4.7
+  },
+  {
+    id: 'family',
+    name: 'Family Room',
+    price: 200000,
+    weekdayPrice: 200000,
+    weekendPrice: 250000,
+    weekend_price: 250000,
+    roomNumbers: '6',
+    description: {
+      id: 'Kamar Keluarga luas untuk kapasitas 4 orang. Dilengkapi Duo Double Bed, AC, Smart TV bersama, Kamar Mandi bersama dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Spacious Family Room for up to 4 guests. Features Duo Double Beds, AC, Shared Smart TV, Shared Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+    },
+    image: roomFamily,
+    size: '28 m²',
+    capacity: 4,
+    bedType: {
+      id: 'Duo Double Bed',
+      en: 'Duo Double Bed'
+    },
+    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    rating: 4.9
+  },
+  {
+    id: 'ekonomi',
+    name: 'Economis Room',
+    price: 125000,
+    weekdayPrice: 125000,
+    weekendPrice: 150000,
+    weekend_price: 150000,
+    roomNumbers: '7 & 8',
+    description: {
+      id: 'Pilihan hemat Economis Room untuk 2 orang. Dilengkapi Duo Double Bed, AC, Smart TV bersama, Kamar Mandi bersama, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Budget-friendly Economis Room for 2 guests. Features Duo Double Beds, AC, Shared Smart TV, Shared Bathroom, Seated Toilet, Mineral Water, and Free WiFi.'
+    },
+    image: roomEkonomi,
+    size: '12 m²',
+    capacity: 2,
+    bedType: {
+      id: 'Duo Double Bed',
+      en: 'Duo Double Bed'
+    },
+    amenities: ['wifi', 'ac', 'tv', 'shower'],
+    rating: 4.6
   }
 ];
 

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Language, Room, AddOn } from '../types';
 import { ROOMS, ADD_ONS, TRANSLATIONS } from '../data';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseDebugInfo } from '../lib/supabase';
 import { logActivity, getQrisSettings, getDynamicQrisImageUrl } from '../services/adminService';
 import { sendAdminNotification } from '../services/fonnte';
 
@@ -184,9 +184,9 @@ export default function BookingForm({
     return d.toISOString().split('T')[0];
   };
 
-  const getDayAfterTomorrowDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
+  const getNextDayDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
   };
 
@@ -199,10 +199,19 @@ export default function BookingForm({
   });
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsError, setRoomsError] = useState<string | null>(null);
-  const [selectedRoomId, setSelectedRoomId] = useState(prefilledRoomId || 'ekonomi');
+  const [selectedRoomId, setSelectedRoomId] = useState(prefilledRoomId || 'standard-room-utama');
   const [checkIn, setCheckIn] = useState(prefilledCheckIn || getTomorrowDate());
-  const [checkOut, setCheckOut] = useState(prefilledCheckOut || getDayAfterTomorrowDate());
+  const [checkOut, setCheckOut] = useState(prefilledCheckOut || getNextDayDate(prefilledCheckIn || getTomorrowDate()));
   const [guests, setGuests] = useState(prefilledGuests || 2);
+
+  const handleCheckInChange = (newDate: string) => {
+    setCheckIn(newDate);
+    const inDate = new Date(newDate);
+    const outDate = new Date(checkOut);
+    if (isNaN(outDate.getTime()) || outDate <= inDate) {
+      setCheckOut(getNextDayDate(newDate));
+    }
+  };
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -240,12 +249,23 @@ export default function BookingForm({
       try {
         setRoomsLoading(true);
         setRoomsError(null);
+
+        // Check if Supabase credentials are valid
+        if (!supabaseDebugInfo.isValidUrl || !supabaseDebugInfo.keyDefined) {
+          if (prefilledRoomId) {
+            const mappedId = mapPrefilledRoomId(prefilledRoomId, rooms);
+            setSelectedRoomId(mappedId);
+          }
+          return;
+        }
+
         const { data, error } = await supabase
           .from('room_types')
           .select('id, name, description, weekday_price, weekend_price, max_guest');
 
         if (error) {
-          throw error;
+          console.warn('[BookingForm] Supabase room_types query unavailable, using default room list:', error.message);
+          return;
         }
 
         if (data && data.length > 0) {
@@ -279,9 +299,7 @@ export default function BookingForm({
           }
         }
       } catch (err: any) {
-        console.error('Error loading room types from Supabase:', err);
-        setRoomsError(err?.message || String(err));
-        // Fallback initialized in useState already
+        console.warn('[BookingForm] Using static fallback room catalog:', err);
       } finally {
         setRoomsLoading(false);
       }
@@ -634,7 +652,7 @@ export default function BookingForm({
         }
       }
     } catch (notifErr) {
-      console.error('[BookingForm] Exception sending admin notification:', notifErr);
+      console.warn('[BookingForm] Exception sending admin notification:', notifErr);
     }
 
     const bookingPayload = {
@@ -920,7 +938,7 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                     type="date"
                     min={getTodayDate()}
                     value={checkIn}
-                    onChange={(e) => setCheckIn(e.target.value)}
+                    onChange={(e) => handleCheckInChange(e.target.value)}
                     className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
                     required
                   />

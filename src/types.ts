@@ -3,7 +3,11 @@ export type Language = 'id' | 'en';
 export interface Room {
   id: string;
   name: string;
-  price: number; // IDR per night
+  price: number; // Weekday IDR per night
+  weekdayPrice?: number;
+  weekendPrice?: number;
+  weekend_price?: number;
+  roomNumbers?: string;
   description: {
     id: string;
     en: string;

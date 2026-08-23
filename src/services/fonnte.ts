@@ -106,11 +106,11 @@ Silakan menunggu pembayaran dari customer.`;
       console.log('[Fonnte Service] WhatsApp notification sent successfully to admin!');
       return true;
     } else {
-      console.error('[Fonnte Service] Failed to send WhatsApp via Fonnte:', result.reason || JSON.stringify(result));
+      console.warn('[Fonnte Service] Could not send WhatsApp via Fonnte (device may be disconnected or token invalid):', result?.reason || JSON.stringify(result));
       return false;
     }
   } catch (error) {
-    console.error('[Fonnte Service] Exception occurred while sending Fonnte WhatsApp:', error);
+    console.warn('[Fonnte Service] Exception occurred while sending Fonnte WhatsApp:', error);
     return false;
   }
 }

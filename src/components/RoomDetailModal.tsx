@@ -173,17 +173,29 @@ export default function RoomDetailModal({ room, isOpen, onClose, lang, onBookNow
               {/* Action pricing */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-brand-200">
                 <div className="text-center sm:text-left">
-                  <span className="text-[10px] text-brand-950/60 block uppercase tracking-widest font-semibold">
-                    {lang === 'id' ? 'Harga Mulai Dari' : 'Starting Price'}
-                  </span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl sm:text-3xl font-serif font-bold text-brand-700">
-                      Rp{room.price.toLocaleString('id-ID')}
-                    </span>
-                    <span className="text-xs text-stone-500 font-light">
-                      / {t.perNight}
-                    </span>
+                  <div className="flex flex-wrap items-baseline gap-3">
+                    <div>
+                      <span className="text-[10px] text-brand-950/60 block uppercase tracking-widest font-semibold">
+                        Weekday
+                      </span>
+                      <span className="text-xl sm:text-2xl font-serif font-bold text-brand-700">
+                        Rp{room.price.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="border-l border-brand-300 pl-3">
+                      <span className="text-[10px] text-brand-950/60 block uppercase tracking-widest font-semibold">
+                        Weekend / Holiday
+                      </span>
+                      <span className="text-xl sm:text-2xl font-serif font-bold text-brand-850">
+                        Rp{(room.weekendPrice || room.weekend_price || room.price).toLocaleString('id-ID')}
+                      </span>
+                    </div>
                   </div>
+                  {room.roomNumbers && (
+                    <p className="text-xs text-stone-500 mt-1 font-medium">
+                      No. Kamar: <span className="text-brand-900 font-bold">{room.roomNumbers}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-3 w-full sm:w-auto">
