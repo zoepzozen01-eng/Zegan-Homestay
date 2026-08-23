@@ -1,10 +1,12 @@
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Wifi, Wind, Tv, Coffee, Maximize, Users, Bed, 
-  Star, ShieldCheck, Heart, Eye, Sparkles, CheckCircle2 
+  Star, ShieldCheck, Heart, Eye, Sparkles, CheckCircle2, Ban 
 } from 'lucide-react';
 import { Room, Language } from '../types';
 import { TRANSLATIONS } from '../data';
+import { checkRoomAvailability, getLiveBookingsAndRooms } from '../lib/roomAvailability';
 
 interface RoomDetailModalProps {
   room: Room | null;
@@ -17,6 +19,26 @@ interface RoomDetailModalProps {
 export default function RoomDetailModal({ room, isOpen, onClose, lang, onBookNow }: RoomDetailModalProps) {
   if (!room) return null;
   const t = TRANSLATIONS[lang];
+
+  const [liveBookings, setLiveBookings] = useState<any[]>([]);
+  const [liveRooms, setLiveRooms] = useState<any[]>([]);
+
+  const todayStr = new Date().toISOString().substring(0, 10);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().substring(0, 10);
+
+  useEffect(() => {
+    if (isOpen) {
+      getLiveBookingsAndRooms().then(({ bookings, dbRooms }) => {
+        setLiveBookings(bookings);
+        setLiveRooms(dbRooms);
+      });
+    }
+  }, [isOpen]);
+
+  const avail = checkRoomAvailability(room.name || room.id, todayStr, tomorrowStr, liveBookings, liveRooms);
+  const isFullyBooked = !avail.isAvailable;
 
   // Helper to map amenity strings to Lucide Icons
   const getAmenityDetails = (amenity: string) => {
@@ -108,6 +130,17 @@ export default function RoomDetailModal({ room, isOpen, onClose, lang, onBookNow
                     <Star className="w-3.5 h-3.5 fill-current" />
                     {room.rating.toFixed(1)}
                   </div>
+                  {isFullyBooked ? (
+                    <div className="bg-red-950/85 text-red-200 border border-red-500/40 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                      <span>{lang === 'id' ? 'Terpesan (Penuh)' : 'Fully Booked'}</span>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-950/80 text-emerald-200 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[11px] font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>{avail.availableCount} {lang === 'id' ? 'Unit Tersedia' : 'Available'}</span>
+                    </div>
+                  )}
                 </div>
                 <h3 className="text-3xl sm:text-4xl font-serif font-normal text-white leading-tight">
                   {room.name}
@@ -199,17 +232,28 @@ export default function RoomDetailModal({ room, isOpen, onClose, lang, onBookNow
                 </div>
 
                 <div className="flex gap-3 w-full sm:w-auto">
-                  <button
-                    id={`modal-book-button-${room.id}`}
-                    onClick={() => {
-                      onBookNow(room.id);
-                      onClose();
-                    }}
-                    className="flex-1 sm:flex-initial bg-brand-700 hover:bg-brand-850 text-white font-bold px-8 py-3.5 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-widest cursor-pointer"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-brand-300" />
-                    <span>{t.bookNow}</span>
-                  </button>
+                  {isFullyBooked ? (
+                    <button
+                      id={`modal-book-button-${room.id}`}
+                      disabled
+                      className="flex-1 sm:flex-initial bg-stone-300 text-stone-500 font-bold px-8 py-3.5 rounded-lg border border-stone-300 shadow-none flex items-center justify-center gap-2 text-xs uppercase tracking-widest cursor-not-allowed select-none"
+                    >
+                      <Ban className="w-4 h-4 text-stone-400" />
+                      <span>{lang === 'id' ? 'Kamar Terpesan Penuh' : 'Fully Booked'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      id={`modal-book-button-${room.id}`}
+                      onClick={() => {
+                        onBookNow(room.id);
+                        onClose();
+                      }}
+                      className="flex-1 sm:flex-initial bg-brand-700 hover:bg-brand-850 text-white font-bold px-8 py-3.5 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-widest cursor-pointer"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-brand-300" />
+                      <span>{t.bookNow}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

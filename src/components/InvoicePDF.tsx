@@ -224,6 +224,9 @@ export default function InvoicePDF({ booking, isOpen, onClose, lang }: InvoicePD
                 <p>Nama: <span className="font-semibold text-stone-900">{booking.full_name}</span></p>
                 <p>Email: <span className="font-semibold text-stone-900">{booking.email}</span></p>
                 <p>WhatsApp/HP: <span className="font-semibold text-stone-900">{booking.phone}</span></p>
+                {booking.guests && (
+                  <p>Jumlah Tamu: <span className="font-semibold text-stone-900">{booking.guests} Orang {booking.extra_beds ? `(+${booking.extra_beds} Kasur Tambahan)` : ''}</span></p>
+                )}
                 {booking.special_requests && (
                   <p className="text-[11px] italic text-stone-500 mt-1">
                     Catatan: "{booking.special_requests}"
@@ -237,10 +240,13 @@ export default function InvoicePDF({ booking, isOpen, onClose, lang }: InvoicePD
                 {lang === 'id' ? 'Detail Reservasi' : 'Reservation Details'}
               </h4>
               <div className="space-y-1 text-xs text-stone-700">
-                <p>Check In: <span className="font-semibold text-stone-900">{booking.check_in} (14:00)</span></p>
-                <p>Check Out: <span className="font-semibold text-stone-900">{booking.check_out} (12:00)</span></p>
+                <p>Check-In: <span className="font-semibold text-emerald-800">🟢 {booking.check_in} (pk {booking.check_in_time || '14:00'} WIB)</span></p>
+                <p>Check-Out: <span className="font-semibold text-rose-800">🔴 {booking.check_out} (pk {booking.check_out_time || '12:00'} WIB)</span></p>
                 <p>Jumlah Malam: <span className="font-semibold text-stone-900">{nights} malam</span></p>
                 <p>Nomor Kamar: <span className="font-bold text-brand-900">{booking.room_number || 'A-1'}</span></p>
+                {booking.extra_beds ? (
+                  <p className="text-amber-800 font-medium">🛏️ Kasur Tambahan: <span className="font-bold">+{booking.extra_beds} unit</span></p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -252,21 +258,37 @@ export default function InvoicePDF({ booking, isOpen, onClose, lang }: InvoicePD
                 <tr className="bg-stone-50 border-b border-stone-200 font-semibold text-stone-700">
                   <th className="p-3">{lang === 'id' ? 'Deskripsi Layanan' : 'Description'}</th>
                   <th className="p-3 text-center">{lang === 'id' ? 'Durasi' : 'Nights'}</th>
-                  <th className="p-3 text-right">{lang === 'id' ? 'Harga / Malam' : 'Price / Night'}</th>
+                  <th className="p-3 text-right">{lang === 'id' ? 'Harga Satuan' : 'Unit Price'}</th>
                   <th className="p-3 text-right">{lang === 'id' ? 'Total' : 'Amount'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-stone-700">
                 <tr>
                   <td className="p-3 font-semibold text-stone-900">
-                    Sewa Kamar: {booking.room_name || 'Kamar Zegan Homestay'}
+                    Sewa Kamar: {booking.room_name || 'Kamar Zegan Homestay'} ({booking.check_in} s/d {booking.check_out})
                   </td>
                   <td className="p-3 text-center font-medium">{nights} Malam</td>
-                  <td className="p-3 text-right font-mono">Rp{pricePerNight?.toLocaleString('id-ID')}</td>
+                  <td className="p-3 text-right font-mono">
+                    Rp{Math.round(((booking.total_price - (booking.extra_bed_price || 0)) / nights) || 0).toLocaleString('id-ID')}
+                  </td>
                   <td className="p-3 text-right font-mono font-semibold text-stone-950">
-                    Rp{booking.total_price?.toLocaleString('id-ID')}
+                    Rp{(booking.total_price - (booking.extra_bed_price || 0)).toLocaleString('id-ID')}
                   </td>
                 </tr>
+                {Boolean(booking.extra_beds && booking.extra_beds > 0) && (
+                  <tr className="bg-amber-50/40">
+                    <td className="p-3 font-medium text-amber-900">
+                      🛏️ Kasur Tambahan (Extra Bed x{booking.extra_beds})
+                    </td>
+                    <td className="p-3 text-center font-medium">{nights} Malam</td>
+                    <td className="p-3 text-right font-mono text-amber-900">
+                      Rp{(50000 * (booking.extra_beds || 1)).toLocaleString('id-ID')} / mlm
+                    </td>
+                    <td className="p-3 text-right font-mono font-semibold text-amber-950">
+                      Rp{(booking.extra_bed_price || (50000 * (booking.extra_beds || 1) * nights)).toLocaleString('id-ID')}
+                    </td>
+                  </tr>
+                )}
                 {/* Tax / Service included */}
                 <tr className="bg-stone-50/50">
                   <td className="p-3 text-stone-500 italic" colSpan={3}>

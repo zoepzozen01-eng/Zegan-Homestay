@@ -4,7 +4,8 @@ import {
   BarChart3, Calendar as CalendarIcon, Users, Settings, ShieldCheck, 
   Search, Filter, Check, ArrowRight, ClipboardList, Database, RefreshCw, 
   Download, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, 
-  MessageSquare, Mail, Play, Key, UserCheck, ShieldAlert, LogOut, ChevronRight, ChevronLeft, X
+  MessageSquare, Mail, Play, Key, UserCheck, ShieldAlert, LogOut, ChevronRight, ChevronLeft, X,
+  CalendarPlus
 } from 'lucide-react';
 import { Booking, BookingStatus, PaymentStatus, UserRole, ActivityLog } from '../types';
 import { 
@@ -66,7 +67,10 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   const [offlineRoomNum, setOfflineRoomNum] = useState('1');
   const [offlineCheckIn, setOfflineCheckIn] = useState('');
   const [offlineCheckOut, setOfflineCheckOut] = useState('');
+  const [offlineCheckInTime, setOfflineCheckInTime] = useState('14:00');
+  const [offlineCheckOutTime, setOfflineCheckOutTime] = useState('12:00');
   const [offlineGuests, setOfflineGuests] = useState(2);
+  const [offlineExtraBeds, setOfflineExtraBeds] = useState(0);
   const [offlineNotes, setOfflineNotes] = useState('');
   const [offlinePriceOverride, setOfflinePriceOverride] = useState('');
 
@@ -98,6 +102,25 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     totalPrice?: number;
   } | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Stay Extension (Perpanjangan Menginap) modal state
+  const [extensionModalBooking, setExtensionModalBooking] = useState<{
+    bookingCode: string;
+    guestName: string;
+    phone: string;
+    roomName: string;
+    roomNumber: string;
+    currentCheckIn: string;
+    currentCheckOut: string;
+    totalPrice: number;
+    pricePerNight: number;
+  } | null>(null);
+  const [extensionNewCheckOut, setExtensionNewCheckOut] = useState('');
+  const [extensionExtraNights, setExtensionExtraNights] = useState<number>(1);
+  const [extensionExtraPrice, setExtensionExtraPrice] = useState<number>(0);
+  const [extensionPaymentStatus, setExtensionPaymentStatus] = useState<'Paid' | 'Unpaid'>('Paid');
+  const [isSubmittingExtension, setIsSubmittingExtension] = useState(false);
+  const [extensionAvailabilityWarning, setExtensionAvailabilityWarning] = useState('');
 
   useEffect(() => {
     const checkSignals = () => {
@@ -427,7 +450,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       );
 
       // Update local dbRooms state immediately
-      setDbRooms(prev => prev.map(r => r.id === roomObj.id ? { ...r, status: newStatus, occupied_until: occupiedUntilVal } : r));
+      setDbRooms(prev => {
+        const updated = prev.map(r => r.id === roomObj.id ? { ...r, status: newStatus, occupied_until: occupiedUntilVal } : r);
+        localStorage.setItem('zegan_db_rooms', JSON.stringify(updated));
+        return updated;
+      });
+      window.dispatchEvent(new Event('storage'));
 
       // Update active selected room state so popup drawer updates immediately too
       setSelectedCalendarRoom((prev: any) => {
@@ -461,10 +489,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       const roomObj = calendarRoomsList.find(r => r.number === offlineRoomNum);
       if (roomObj) {
         const pricePerNight = getRoomBasePrice(roomObj.type);
-        setOfflinePriceOverride(String(pricePerNight * nights));
+        const roomTotal = pricePerNight * nights;
+        const extraBedTotal = (offlineExtraBeds || 0) * 50000 * nights;
+        setOfflinePriceOverride(String(roomTotal + extraBedTotal));
       }
     }
-  }, [offlineCheckIn, offlineCheckOut, offlineRoomNum, dbRooms]);
+  }, [offlineCheckIn, offlineCheckOut, offlineRoomNum, offlineExtraBeds, dbRooms]);
 
   // Sync tab with props
   useEffect(() => {
@@ -699,6 +729,9 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   // Admin Actions: Check In
   const handleConfirmCheckIn = async (bookingCode: string) => {
     try {
+      const targetBooking = bookings.find(b => b.booking_code === bookingCode);
+      const checkoutTime = targetBooking?.check_out ? `${targetBooking.check_out} 12:00:00` : null;
+
       try {
         await supabase
           .from('bookings')
@@ -706,6 +739,20 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           .eq('booking_code', bookingCode);
       } catch (errSb) {
         console.warn('Supabase checkin update failed:', errSb);
+      }
+
+      if (targetBooking?.room_number) {
+        try {
+          await supabase
+            .from('rooms')
+            .update({
+              status: 'Occupied',
+              occupied_until: checkoutTime
+            })
+            .eq('room_number', targetBooking.room_number);
+        } catch (errRoom) {
+          console.warn('Supabase room status update on checkin failed:', errRoom);
+        }
       }
 
       const updated = bookings.map(b => {
@@ -723,8 +770,17 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      if (targetBooking?.room_number) {
+        setDbRooms(prev => {
+          const updatedRooms = prev.map(r => r.number === targetBooking.room_number ? { ...r, status: 'Occupied', occupied_until: checkoutTime } : r);
+          localStorage.setItem('zegan_db_rooms', JSON.stringify(updatedRooms));
+          return updatedRooms;
+        });
+      }
+
       setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
       refreshWorkspace();
     } catch (err) {
       console.error(err);
@@ -734,6 +790,8 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   // Admin Actions: Check Out
   const handleConfirmCheckOut = async (bookingCode: string) => {
     try {
+      const targetBooking = bookings.find(b => b.booking_code === bookingCode);
+
       try {
         await supabase
           .from('bookings')
@@ -744,6 +802,20 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           .eq('booking_code', bookingCode);
       } catch (errSb) {
         console.warn('Supabase checkout update failed:', errSb);
+      }
+
+      if (targetBooking?.room_number) {
+        try {
+          await supabase
+            .from('rooms')
+            .update({
+              status: 'Available',
+              occupied_until: null
+            })
+            .eq('room_number', targetBooking.room_number);
+        } catch (errRoom) {
+          console.warn('Supabase room status update on checkout failed:', errRoom);
+        }
       }
 
       const updated = bookings.map(b => {
@@ -762,8 +834,17 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      if (targetBooking?.room_number) {
+        setDbRooms(prev => {
+          const updatedRooms = prev.map(r => r.number === targetBooking.room_number ? { ...r, status: 'Available', occupied_until: null } : r);
+          localStorage.setItem('zegan_db_rooms', JSON.stringify(updatedRooms));
+          return updatedRooms;
+        });
+      }
+
       setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
       refreshWorkspace();
     } catch (err) {
       console.error(err);
@@ -785,7 +866,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   // Execute Cancel/Reject Booking
   const handleExecuteCancelBooking = async () => {
     if (!cancelModalBooking) return;
-    const { bookingCode } = cancelModalBooking;
+    const { bookingCode, roomNumber } = cancelModalBooking;
     setIsCancelling(true);
     try {
       // 1. Update in Supabase if available
@@ -801,13 +882,28 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         console.warn('Supabase cancel booking update failed:', errSb);
       }
 
+      // If roomNumber is known, release physical room in Supabase
+      if (roomNumber) {
+        try {
+          await supabase
+            .from('rooms')
+            .update({
+              status: 'Available',
+              occupied_until: null
+            })
+            .eq('room_number', roomNumber);
+        } catch (errRoom) {
+          console.warn('Supabase room release on cancel failed:', errRoom);
+        }
+      }
+
       // 2. Update local state
       const updated = bookings.map(b => {
         if (b.booking_code === bookingCode) {
           logActivity(
             adminName,
             currentRole,
-            `Pemesanan dengan kode ${bookingCode} ditolak/dibatalkan oleh admin.`
+            `Pemesanan dengan kode ${bookingCode} (Kamar ${b.room_number || b.room_name || '-'}) dibatalkan/dikosongkan oleh admin.`
           );
           return {
             ...b,
@@ -818,8 +914,18 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      // Update dbRooms to make the room available
+      if (roomNumber) {
+        setDbRooms(prev => {
+          const updatedRooms = prev.map(r => r.number === roomNumber ? { ...r, status: 'Available', occupied_until: null } : r);
+          localStorage.setItem('zegan_db_rooms', JSON.stringify(updatedRooms));
+          return updatedRooms;
+        });
+      }
+
       setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
 
       // Close room details popup if open
       setSelectedCalendarRoom(null);
@@ -829,6 +935,160 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       console.error('Error cancelling booking:', err);
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  // Admin Actions: Open Stay Extension Modal
+  const handleOpenExtendBooking = (bookingInput: Booking | string) => {
+    const b = typeof bookingInput === 'string' 
+      ? bookings.find(item => item.booking_code === bookingInput) 
+      : bookingInput;
+    if (!b) return;
+
+    const cIn = new Date(b.check_in);
+    const cOut = new Date(b.check_out);
+    const diffTime = Math.abs(cOut.getTime() - cIn.getTime());
+    const nights = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    const pricePerNight = Math.round((b.total_price || 0) / nights) || 150000;
+
+    // Default new checkout = current check_out + 1 day
+    const nextDate = new Date(b.check_out);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const nextDateStr = nextDate.toISOString().substring(0, 10);
+
+    setExtensionModalBooking({
+      bookingCode: b.booking_code,
+      guestName: b.full_name,
+      phone: b.phone,
+      roomName: b.room_name || 'Unit Kamar',
+      roomNumber: b.room_number || '',
+      currentCheckIn: b.check_in,
+      currentCheckOut: b.check_out,
+      totalPrice: b.total_price || 0,
+      pricePerNight
+    });
+
+    setExtensionNewCheckOut(nextDateStr);
+    setExtensionExtraNights(1);
+    setExtensionExtraPrice(pricePerNight);
+    setExtensionPaymentStatus('Paid');
+    setExtensionAvailabilityWarning('');
+  };
+
+  // Extension Date Change Handler
+  const handleExtensionDateChange = (newDateStr: string) => {
+    setExtensionNewCheckOut(newDateStr);
+    if (!extensionModalBooking) return;
+    const oldOut = new Date(extensionModalBooking.currentCheckOut);
+    const newOut = new Date(newDateStr);
+    const diffDays = Math.ceil((newOut.getTime() - oldOut.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 0) {
+      setExtensionExtraNights(diffDays);
+      setExtensionExtraPrice(diffDays * extensionModalBooking.pricePerNight);
+
+      // Check conflicts with existing confirmed bookings on the new dates
+      const hasConflict = bookings.some(b => {
+        if (b.booking_code === extensionModalBooking.bookingCode) return false;
+        const st = String(b.status || '').toLowerCase();
+        if (st === 'cancelled' || st === 'batal' || st === 'expired') return false;
+        
+        const sameRoom = (b.room_number && b.room_number === extensionModalBooking.roomNumber) || 
+                         (b.room_name === extensionModalBooking.roomName);
+        if (!sameRoom) return false;
+
+        // Overlaps with [extensionModalBooking.currentCheckOut, newDateStr]
+        const isOverlapping = !(b.check_out <= extensionModalBooking.currentCheckOut || b.check_in >= newDateStr);
+        return isOverlapping;
+      });
+
+      if (hasConflict) {
+        setExtensionAvailabilityWarning('⚠️ Perhatian: Terdeteksi pesanan lain yang terkonfirmasi untuk kamar ini pada rentang tanggal perpanjangan.');
+      } else {
+        setExtensionAvailabilityWarning('');
+      }
+    } else {
+      setExtensionExtraNights(0);
+      setExtensionExtraPrice(0);
+      setExtensionAvailabilityWarning('⚠️ Tanggal check-out baru harus setelah tanggal check-out saat ini.');
+    }
+  };
+
+  // Execute Stay Extension
+  const handleExecuteExtendStay = async () => {
+    if (!extensionModalBooking || !extensionNewCheckOut || extensionExtraNights <= 0) return;
+    setIsSubmittingExtension(true);
+    try {
+      const newTotalPrice = (extensionModalBooking.totalPrice || 0) + (extensionExtraPrice || 0);
+      const checkoutTime = `${extensionNewCheckOut} 12:00:00`;
+      const extNote = `Perpanjangan menginap s/d ${extensionNewCheckOut} (+${extensionExtraNights} malam, Tambahan Rp${extensionExtraPrice.toLocaleString('id-ID')})`;
+
+      // 1. Supabase booking update
+      try {
+        await supabase
+          .from('bookings')
+          .update({
+            check_out: extensionNewCheckOut,
+            total_price: newTotalPrice
+          })
+          .eq('booking_code', extensionModalBooking.bookingCode);
+      } catch (errSb) {
+        console.warn('Supabase extend stay booking update failed:', errSb);
+      }
+
+      // 2. Supabase room occupied_until update
+      if (extensionModalBooking.roomNumber) {
+        try {
+          await supabase
+            .from('rooms')
+            .update({
+              occupied_until: checkoutTime
+            })
+            .eq('room_number', extensionModalBooking.roomNumber);
+        } catch (errRoom) {
+          console.warn('Supabase extend stay room update failed:', errRoom);
+        }
+      }
+
+      // 3. Local booking update
+      const updated = bookings.map(b => {
+        if (b.booking_code === extensionModalBooking.bookingCode) {
+          logActivity(
+            adminName,
+            currentRole,
+            `Perpanjangan Menginap berhasil: Tamu ${b.full_name} (${b.booking_code}) diperpanjang sampai ${extensionNewCheckOut} (+${extensionExtraNights} malam, Tambahan Rp${extensionExtraPrice.toLocaleString('id-ID')}).`
+          );
+          return {
+            ...b,
+            check_out: extensionNewCheckOut,
+            total_price: newTotalPrice,
+            notes: b.notes ? `${b.notes} | ${extNote}` : extNote
+          };
+        }
+        return b;
+      });
+
+      // 4. Local dbRooms update
+      if (extensionModalBooking.roomNumber) {
+        setDbRooms(prev => {
+          const upd = prev.map(r => r.number === extensionModalBooking.roomNumber ? { ...r, occupied_until: checkoutTime } : r);
+          localStorage.setItem('zegan_db_rooms', JSON.stringify(upd));
+          return upd;
+        });
+      }
+
+      setBookings(updated);
+      localStorage.setItem('zegan_bookings', JSON.stringify(updated));
+      window.dispatchEvent(new Event('storage'));
+
+      // Close modal
+      setExtensionModalBooking(null);
+      setSelectedCalendarRoom(null);
+      refreshWorkspace();
+    } catch (err) {
+      console.error('Error extending stay:', err);
+    } finally {
+      setIsSubmittingExtension(false);
     }
   };
 
@@ -874,6 +1134,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       return;
     }
 
+    const d1 = new Date(offlineCheckIn);
+    const d2 = new Date(offlineCheckOut);
+    const diffTime = d2.getTime() - d1.getTime();
+    const nights = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    const extraBedPrice = (offlineExtraBeds || 0) * 50000 * nights;
+
     const code = 'ZG-OFF' + Math.floor(10000 + Math.random() * 90000);
     const newBooking: Booking = {
       booking_code: code,
@@ -882,7 +1148,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       room_number: roomObj.number,
       check_in: offlineCheckIn,
       check_out: offlineCheckOut,
+      check_in_time: offlineCheckInTime || '14:00',
+      check_out_time: offlineCheckOutTime || '12:00',
       guests: offlineGuests,
+      extra_beds: offlineExtraBeds,
+      extra_bed_price: extraBedPrice,
       full_name: offlineName,
       email: offlineEmail || 'offline-guest@zegan.com',
       phone: offlinePhone || '000000000000',
@@ -896,7 +1166,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
 
     const newBookingsList = [...bookings, newBooking];
     localStorage.setItem('zegan_bookings', JSON.stringify(newBookingsList));
-    logActivity(adminName, currentRole, `Membuat BOOKING OFFLINE untuk tamu ${offlineName} (${code}) kamar ${offlineRoomNum}`);
+    logActivity(
+      adminName, 
+      currentRole, 
+      `Membuat BOOKING OFFLINE untuk tamu ${offlineName} (${code}) kamar ${offlineRoomNum}, In: ${offlineCheckIn} (${offlineCheckInTime || '14:00'}), Out: ${offlineCheckOut} (${offlineCheckOutTime || '12:00'}), Extra Bed: ${offlineExtraBeds}`
+    );
     
     // Clear form
     setOfflineName('');
@@ -904,6 +1178,9 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     setOfflinePhone('');
     setOfflineCheckIn('');
     setOfflineCheckOut('');
+    setOfflineCheckInTime('14:00');
+    setOfflineCheckOutTime('12:00');
+    setOfflineExtraBeds(0);
     setOfflineNotes('');
 
     setBookings(newBookingsList);
@@ -1053,94 +1330,206 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     };
   };
 
-  // Fetch active booking for calendar on a specific date
-  const getRoomActiveBookingOnDate = (roomNumber: string, dateStr: string) => {
-    const roomObj = dbRooms.find(r => r.number === roomNumber);
-    
-    // 1. Direct booking for this specific room
-    const directBooking = bookings.find(b => {
-      if (b.status === 'Cancelled' || b.status === 'Expired') return false;
+  // Helper to format Indonesian / English Day, Date, and Time
+  const formatAdminDayDateTime = (dateStr: string, timeStr?: string, l: 'id' | 'en' = lang) => {
+    if (!dateStr) return '-';
+    try {
+      const d = new Date(dateStr + 'T00:00:00');
+      const dayNamesId = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const dayNamesEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const monthNamesId = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+      const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       
+      const dayName = l === 'id' ? dayNamesId[d.getDay()] : dayNamesEn[d.getDay()];
+      const monthName = l === 'id' ? monthNamesId[d.getMonth()] : monthNamesEn[d.getMonth()];
+      const defaultTime = timeStr || '14:00';
+      const timeFormatted = `pk ${defaultTime} WIB`;
+      return `${dayName}, ${d.getDate()} ${monthName} ${d.getFullYear()} (${timeFormatted})`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Helper to get day name only
+  const getDayNameOnly = (dateStr: string, l: 'id' | 'en' = lang) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr + 'T00:00:00');
+      const dayNamesId = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const dayNamesEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return l === 'id' ? dayNamesId[d.getDay()] : dayNamesEn[d.getDay()];
+    } catch {
+      return '';
+    }
+  };
+
+  // Fetch all bookings touching a specific room
+  const getBookingsForRoom = (roomNumber: string) => {
+    const roomObj = dbRooms.find(r => r.number === roomNumber);
+    return bookings.filter(b => {
+      if (b.status === 'Cancelled' || b.status === 'Expired') return false;
       const assignedRoom = getPhysicalRoomForBooking(b, dbRooms);
-      const isMyRoom = (roomObj && b.room_id === roomObj.id) || 
+      const isDirect = (roomObj && b.room_id === roomObj.id) || 
                        b.room_number === roomNumber || 
                        (assignedRoom && assignedRoom.number === roomNumber) ||
                        (!b.room_number && !assignedRoom && roomNumber === '1');
-                        
-      const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
-      return isMyRoom && isDateInRange;
+      if (isDirect) return true;
+
+      // Whole house link
+      if (['3', '4', '5', '6'].includes(roomNumber)) {
+        const rumahRoom = dbRooms.find(r => r.number === 'Rumah-1' || r.type === 'Rumah');
+        const isRumah = (rumahRoom && b.room_id === rumahRoom.id) || 
+                        b.room_number === 'Rumah-1' || 
+                        (b.room_name && b.room_name.toLowerCase().includes('rumah'));
+        if (isRumah) return true;
+      }
+      if (roomNumber === 'Rumah-1') {
+        const isSub = ['3', '4', '5', '6'].includes(b.room_number || '');
+        if (isSub) return true;
+      }
+      return false;
     });
+  };
 
-    if (directBooking) return directBooking;
+  // Detailed Day Schedule Info for a room on any date (Arrival, Full Stay, Checkout Transition, Vacant)
+  const getRoomDayScheduleInfo = (roomNumber: string, dateStr: string) => {
+    const roomBookings = getBookingsForRoom(roomNumber);
+    const dayName = getDayNameOnly(dateStr);
 
-    // 2. If room is 3, 4, 5, or 6, check if 'Rumah-1' is booked on that date
-    if (['3', '4', '5', '6'].includes(roomNumber)) {
-      const rumahRoom = dbRooms.find(r => r.number === 'Rumah-1' || r.type === 'Rumah');
-      const rumahBooking = bookings.find(b => {
-        if (b.status === 'Cancelled' || b.status === 'Expired') return false;
-        
-        const isRumahRoom = (rumahRoom && b.room_id === rumahRoom.id) || 
-                             b.room_number === 'Rumah-1' || 
-                             (b.room_name && b.room_name.toLowerCase().includes('rumah'));
-                             
-        const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
-        return isRumahRoom && isDateInRange;
-      });
-      if (rumahBooking) {
-        return {
-          ...rumahBooking,
-          room_number: roomNumber,
-          full_name: `${rumahBooking.full_name} (${lang === 'id' ? 'Satu Rumah' : 'Whole House'})`
-        };
-      }
+    const arrivalBooking = roomBookings.find(b => b.check_in === dateStr);
+    const stayingBooking = roomBookings.find(b => dateStr > b.check_in && dateStr < b.check_out);
+    const departureBooking = roomBookings.find(b => b.check_out === dateStr);
+
+    // 1. Turnover Day: One guest leaves and another arrives on the exact same day
+    if (departureBooking && arrivalBooking) {
+      const outTime = departureBooking.check_out_time || '12:00';
+      const inTime = arrivalBooking.check_in_time || '14:00';
+      return {
+        type: 'turnover',
+        isBooked: true,
+        departureBooking,
+        arrivalBooking,
+        badgeLabel: lang === 'id' ? `Out ${outTime} • In ${inTime}` : `Out ${outTime} • In ${inTime}`,
+        shortLabel: lang === 'id' ? `Pergantian Tamu (Out ${outTime} & In ${inTime})` : `Turnover (Out ${outTime} & In ${inTime})`,
+        explanation: lang === 'id'
+          ? `Kamar terisi s/d pk ${outTime} WIB (${departureBooking.full_name}). Setelah pk ${outTime} s/d pk ${inTime} WIB kamar dibersihkan, lalu ditempati tamu baru pk ${inTime} WIB (${arrivalBooking.full_name}).`
+          : `Occupied until ${outTime} (${departureBooking.full_name}). Turnover cleaning until ${inTime}, then occupied by ${arrivalBooking.full_name}.`,
+        colorClass: 'bg-indigo-600 text-indigo-50 ring-indigo-700'
+      };
     }
 
-    // 3. If room is 'Rumah-1', check if any of the sub-rooms (3, 4, 5, 6) is booked
-    if (roomNumber === 'Rumah-1') {
-      for (const num of ['3', '4', '5', '6']) {
-        const subRoomObj = dbRooms.find(r => r.number === num);
-        const subBooking = bookings.find(b => {
-          if (b.status === 'Cancelled' || b.status === 'Expired') return false;
-          
-          const isSubRoom = (subRoomObj && b.room_id === subRoomObj.id) || 
-                             b.room_number === num;
-                             
-          const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
-          return isSubRoom && isDateInRange;
-        });
-        if (subBooking) {
-          return {
-            ...subBooking,
-            room_number: 'Rumah-1',
-            full_name: `${subBooking.full_name} (Room ${num})`
-          };
-        }
-      }
+    // 2. Arrival Day: Guest checks in on this day (e.g. Selasa jam 07:00)
+    if (arrivalBooking) {
+      const inTime = arrivalBooking.check_in_time || '14:00';
+      const isCheckedIn = String(arrivalBooking.status).toLowerCase().replace(/[\s-_]/g, '') === 'checkedin';
+      return {
+        type: 'arrival',
+        isBooked: true,
+        booking: arrivalBooking,
+        badgeLabel: lang === 'id' ? `In: pk ${inTime}` : `In: ${inTime}`,
+        shortLabel: lang === 'id' ? `Check-in ${dayName} pk ${inTime} WIB` : `Check-in ${dayName} ${inTime}`,
+        explanation: lang === 'id'
+          ? `Kamar terisi mulai hari ${dayName} pk ${inTime} WIB (Tamu: ${arrivalBooking.full_name}).`
+          : `Room occupied starting ${dayName} at ${inTime} (Guest: ${arrivalBooking.full_name}).`,
+        colorClass: isCheckedIn ? 'bg-rose-600 text-rose-50 ring-rose-700' : 'bg-amber-500 text-amber-950 ring-amber-600'
+      };
     }
 
+    // 3. Full Staying Day: Guest is staying throughout this day
+    if (stayingBooking) {
+      const isCheckedIn = String(stayingBooking.status).toLowerCase().replace(/[\s-_]/g, '') === 'checkedin';
+      return {
+        type: 'staying',
+        isBooked: true,
+        booking: stayingBooking,
+        badgeLabel: lang === 'id' ? 'Terisi Penuh' : 'Occupied',
+        shortLabel: lang === 'id' ? 'Menginap Penuh (Terisi)' : 'Full Day Stay',
+        explanation: lang === 'id'
+          ? `Kamar terisi penuh sepanjang hari ${dayName} (Tamu: ${stayingBooking.full_name}).`
+          : `Room fully occupied throughout ${dayName} (Guest: ${stayingBooking.full_name}).`,
+        colorClass: isCheckedIn ? 'bg-rose-600 text-rose-50 ring-rose-700' : 'bg-amber-500 text-amber-950 ring-amber-600'
+      };
+    }
+
+    // 4. Departure Day: Guest checks out on this day (e.g. Rabu jam 07:00 -> Terisi s/d jam 07:00, setelah jam 07:00 KOSONG)
+    if (departureBooking) {
+      const outTime = departureBooking.check_out_time || '12:00';
+      return {
+        type: 'departure',
+        isBooked: false, // Vacant after checkout!
+        booking: departureBooking,
+        badgeLabel: lang === 'id' ? `Out: pk ${outTime} (Kosong stlh ${outTime})` : `Out: ${outTime} (Free after ${outTime})`,
+        shortLabel: lang === 'id' ? `Check-out ${dayName} pk ${outTime} WIB (Kosong setelah ${outTime})` : `Check-out ${dayName} ${outTime} (Vacant after)`,
+        explanation: lang === 'id'
+          ? `Kamar terisi s/d hari ${dayName} pk ${outTime} WIB (${departureBooking.full_name}). Setelah pk ${outTime} WIB status kamar KOSONG & siap untuk tamu baru.`
+          : `Occupied until ${dayName} at ${outTime} (${departureBooking.full_name}). After ${outTime}, room is VACANT and ready for new guests.`,
+        colorClass: 'bg-teal-700 text-teal-50 ring-teal-800'
+      };
+    }
+
+    // 5. Vacant Day
+    return {
+      type: 'vacant',
+      isBooked: false,
+      badgeLabel: lang === 'id' ? 'Kosong' : 'Vacant',
+      shortLabel: lang === 'id' ? 'Kosong / Siap Huni' : 'Vacant & Ready',
+      explanation: lang === 'id'
+        ? `Kamar kosong & tersedia sepanjang hari ${dayName}.`
+        : `Room is vacant and available throughout ${dayName}.`,
+      colorClass: 'bg-emerald-600 text-emerald-50 ring-emerald-700'
+    };
+  };
+
+  // Fetch active booking for calendar on a specific date
+  const getRoomActiveBookingOnDate = (roomNumber: string, dateStr: string) => {
+    const schedule = getRoomDayScheduleInfo(roomNumber, dateStr);
+    if (schedule.booking) return schedule.booking;
+    if (schedule.arrivalBooking) return schedule.arrivalBooking;
+    if (schedule.departureBooking) return schedule.departureBooking;
     return null;
   };
 
   // Get color status metadata for a room on a specific date
   const getRoomColorStatusOnDate = (room: any, dateStr: string) => {
-    const activeBooking = getRoomActiveBookingOnDate(room.number, dateStr);
+    const schedule = getRoomDayScheduleInfo(room.number, dateStr);
     const todayStr = new Date().toISOString().substring(0, 10);
     
-    if (activeBooking) {
-      const bStatus = String(activeBooking.status).toLowerCase().replace(/[\s-_]/g, '');
-      const pStatus = String(activeBooking.payment_status || '').toLowerCase().replace(/[\s-_]/g, '');
+    if (schedule.type === 'turnover') {
+      return {
+        status: 'Turnover',
+        color: 'bg-indigo-600 text-indigo-50 ring-indigo-700',
+        label: schedule.badgeLabel,
+        schedule
+      };
+    }
+
+    if (schedule.type === 'departure') {
+      return {
+        status: 'CheckoutDay',
+        color: 'bg-teal-700 text-teal-50 ring-teal-800',
+        label: schedule.badgeLabel,
+        schedule
+      };
+    }
+
+    if (schedule.type === 'arrival' || schedule.type === 'staying') {
+      const activeBooking = schedule.booking || schedule.arrivalBooking;
+      const bStatus = String(activeBooking?.status || '').toLowerCase().replace(/[\s-_]/g, '');
+      const pStatus = String(activeBooking?.payment_status || '').toLowerCase().replace(/[\s-_]/g, '');
       if (bStatus === 'checkedin' || bStatus === 'occupied') {
         return { 
           status: 'Occupied', 
           color: 'bg-rose-600 text-rose-50 ring-rose-700', 
-          label: lang === 'id' ? 'Terisi (Occupied)' : 'Occupied' 
+          label: schedule.badgeLabel || (lang === 'id' ? 'Terisi (Occupied)' : 'Occupied'),
+          schedule
         };
       }
       if (bStatus === 'pending' || bStatus === 'confirmed' || bStatus === 'paid' || pStatus === 'paid') {
         return { 
           status: 'Booked', 
           color: 'bg-amber-500 text-amber-950 ring-amber-600', 
-          label: lang === 'id' ? 'Dipesan (Booked)' : 'Booked' 
+          label: schedule.badgeLabel || (lang === 'id' ? 'Dipesan (Booked)' : 'Booked'),
+          schedule
         };
       }
     }
@@ -1153,7 +1542,8 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return { 
           status: 'Occupied', 
           color: 'bg-rose-600 text-rose-50 ring-rose-700', 
-          label: lang === 'id' ? 'Terisi (Occupied)' : 'Occupied' 
+          label: lang === 'id' ? 'Terisi (Occupied)' : 'Occupied',
+          schedule
         };
       }
     }
@@ -1161,7 +1551,8 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     return { 
       status: 'Available', 
       color: 'bg-emerald-600 text-emerald-50 ring-emerald-700', 
-      label: lang === 'id' ? 'Kosong' : 'Available' 
+      label: lang === 'id' ? 'Kosong' : 'Available',
+      schedule
     };
   };
 
@@ -1797,8 +2188,15 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             <span className="text-[10px] text-stone-400 font-mono">{b.phone}</span>
                           </td>
                           <td className="p-3">
-                            <span className="block">{b.check_in} s/d {b.check_out}</span>
-                            <span className="text-[10px] text-stone-400 font-light block">Kapasitas: {b.guests} Tamu</span>
+                            <span className="block font-bold text-stone-800">
+                              {getDayNameOnly(b.check_in)} ({b.check_in_time || '14:00'}) ➔ {getDayNameOnly(b.check_out)} ({b.check_out_time || '12:00'})
+                            </span>
+                            <span className="text-[10px] text-stone-400 font-mono block">
+                              {b.check_in} s/d {b.check_out}
+                            </span>
+                            <span className="text-[10px] text-stone-500 font-medium block">
+                              👥 {b.guests} Tamu {b.extra_beds ? `(+${b.extra_beds} Kasur Tambahan)` : ''}
+                            </span>
                           </td>
                           <td className="p-3 text-right font-mono font-bold text-stone-850">
                             Rp{(b.total_price || 0).toLocaleString('id-ID')}
@@ -1815,19 +2213,38 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                               {b.status}
                             </span>
                           </td>
-                          <td className="p-3 flex justify-center gap-1.5 mt-1">
+                          <td className="p-3 flex justify-center gap-1.5 mt-1 flex-wrap">
                             <button
                               onClick={() => setSelectedInvoiceBooking(b)}
                               className="p-1.5 px-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-md text-[10px] font-bold cursor-pointer transition-all"
+                              title="Lihat Invoice"
                             >
                               Invoice
                             </button>
+                            {(b.status === 'Paid' || b.status === 'Checked In') && (
+                              <button
+                                onClick={() => handleOpenExtendBooking(b)}
+                                className="p-1.5 px-2 bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 rounded-md text-[10px] font-bold cursor-pointer transition-all"
+                                title="Perpanjang Menginap"
+                              >
+                                Perpanjang
+                              </button>
+                            )}
                             {b.status === 'Waiting Verification' && (
                               <button
                                 onClick={() => handleConfirmPaid(b.booking_code)}
                                 className="p-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[10px] font-bold cursor-pointer transition-all"
                               >
                                 Verifikasi
+                              </button>
+                            )}
+                            {b.status !== 'Cancelled' && b.status !== 'Completed' && (
+                              <button
+                                onClick={() => handleCancelBooking(b.booking_code)}
+                                className="p-1.5 px-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md text-[10px] font-bold cursor-pointer transition-all"
+                                title="Batalkan Booking"
+                              >
+                                Batal
                               </button>
                             )}
                           </td>
@@ -2302,7 +2719,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Pilih Kamar *</label>
                   <select
@@ -2318,7 +2735,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Check-In *</label>
+                  <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Tgl Check-In *</label>
                   <input
                     type="date"
                     value={offlineCheckIn}
@@ -2328,7 +2745,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Check-Out *</label>
+                  <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Tgl Check-Out *</label>
                   <input
                     type="date"
                     value={offlineCheckOut}
@@ -2339,7 +2756,55 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Specific Hours for Check In & Check Out */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200">
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-stone-600 font-bold uppercase tracking-wider">
+                    ⏰ Jam Check-In (WIB)
+                  </label>
+                  <select
+                    value={offlineCheckInTime}
+                    onChange={(e) => setOfflineCheckInTime(e.target.value)}
+                    className="w-full p-2 bg-white border border-stone-200 rounded-lg text-xs font-semibold text-stone-900"
+                  >
+                    <option value="07:00">pk 07:00 WIB (Pagi Hari)</option>
+                    <option value="08:00">pk 08:00 WIB</option>
+                    <option value="09:00">pk 09:00 WIB</option>
+                    <option value="10:00">pk 10:00 WIB</option>
+                    <option value="11:00">pk 11:00 WIB</option>
+                    <option value="12:00">pk 12:00 WIB (Siang)</option>
+                    <option value="13:00">pk 13:00 WIB</option>
+                    <option value="14:00">pk 14:00 WIB (Standard Check-in)</option>
+                    <option value="15:00">pk 15:00 WIB</option>
+                    <option value="16:00">pk 16:00 WIB (Sore)</option>
+                    <option value="18:00">pk 18:00 WIB (Malam)</option>
+                    <option value="20:00">pk 20:00 WIB</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-stone-600 font-bold uppercase tracking-wider">
+                    ⏰ Jam Check-Out (WIB)
+                  </label>
+                  <select
+                    value={offlineCheckOutTime}
+                    onChange={(e) => setOfflineCheckOutTime(e.target.value)}
+                    className="w-full p-2 bg-white border border-stone-200 rounded-lg text-xs font-semibold text-stone-900"
+                  >
+                    <option value="06:00">pk 06:00 WIB (Pagi)</option>
+                    <option value="07:00">pk 07:00 WIB (Pagi)</option>
+                    <option value="08:00">pk 08:00 WIB</option>
+                    <option value="09:00">pk 09:00 WIB</option>
+                    <option value="10:00">pk 10:00 WIB</option>
+                    <option value="11:00">pk 11:00 WIB</option>
+                    <option value="12:00">pk 12:00 WIB (Standard Check-out)</option>
+                    <option value="13:00">pk 13:00 WIB</option>
+                    <option value="14:00">pk 14:00 WIB</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Extra Bed & Guest Capacity */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Jumlah Tamu</label>
                   <input
@@ -2352,16 +2817,55 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Total Harga Diinput (Rp)</label>
+                  <label className="block text-[11px] text-amber-800 font-bold uppercase tracking-wider">🛏️ Kasur Tambahan (+Rp50rb)</label>
+                  <div className="flex items-center border border-amber-300 rounded-lg overflow-hidden bg-amber-50/40">
+                    <button
+                      type="button"
+                      onClick={() => setOfflineExtraBeds(prev => Math.max(0, prev - 1))}
+                      className="px-3 py-2 text-amber-900 hover:bg-amber-100 font-bold cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="flex-1 text-center font-bold text-amber-950 font-mono text-xs">
+                      {offlineExtraBeds} unit
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOfflineExtraBeds(prev => Math.min(4, prev + 1))}
+                      className="px-3 py-2 text-amber-900 hover:bg-amber-100 font-bold cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Total Tagihan (Rp)</label>
                   <input
                     type="text"
                     value={offlinePriceOverride}
                     onChange={(e) => setOfflinePriceOverride(e.target.value)}
                     placeholder="cth: 450000"
-                    className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono"
+                    className="w-full p-2.5 border rounded-lg focus:ring-1 focus:ring-brand-700 text-xs text-brand-950 font-mono font-bold text-emerald-800"
                   />
                 </div>
               </div>
+
+              {/* Dynamic explanation box for offline reservation */}
+              {offlineCheckIn && offlineCheckOut && (
+                <div className="p-3 bg-brand-50/60 border border-brand-200 rounded-xl space-y-1 text-xs text-brand-950">
+                  <p className="font-bold flex items-center gap-1.5 text-brand-900">
+                    <span>🗓️ Ringkasan Jadwal Reservasi:</span>
+                  </p>
+                  <p className="text-[11px] text-stone-700 leading-relaxed">
+                    Check-in: <span className="font-bold text-stone-900">{formatAdminDayDateTime(offlineCheckIn, offlineCheckInTime)}</span>
+                    <br />
+                    Check-out: <span className="font-bold text-stone-900">{formatAdminDayDateTime(offlineCheckOut, offlineCheckOutTime)}</span>
+                  </p>
+                  <p className="text-[11px] text-emerald-800 font-medium pt-1 border-t border-brand-200/60">
+                    💡 Kamar No. {offlineRoomNum} akan terisi mulai {getDayNameOnly(offlineCheckIn)} pk {offlineCheckInTime} WIB sampai {getDayNameOnly(offlineCheckOut)} pk {offlineCheckOutTime} WIB. Setelah pk {offlineCheckOutTime} WIB di hari {getDayNameOnly(offlineCheckOut)}, kamar otomatis <span className="font-bold uppercase text-emerald-900">KOSONG</span> dan siap untuk tamu berikutnya.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="block text-[11px] text-stone-500 uppercase tracking-wider">Catatan Tambahan</label>
@@ -2438,15 +2942,17 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         {activeTab === 'check-in' && (
           <div className="space-y-6 animate-fadeIn">
             <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
-              <h3 className="font-serif font-bold text-brand-950 text-base">Antrean Check-In Hari Ini</h3>
-              <p className="text-xs text-stone-500 mt-0.5">Konfirmasi kedatangan tamu hari ini untuk mengubah status kamar menjadi terisi.</p>
+              <div className="border-b border-stone-100 pb-3">
+                <h3 className="font-serif font-bold text-brand-950 text-base">Antrean Check-In Hari Ini</h3>
+                <p className="text-xs text-stone-500 mt-0.5">Konfirmasi kedatangan tamu hari ini, perpanjang masa tinggal jika ada permintaan, atau batalkan jika tamu tidak datang (No Show).</p>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {bookings.filter(b => b.status === 'Paid').length === 0 ? (
                   <div className="p-12 text-center text-stone-400 italic col-span-2">Tidak ada kedatangan tamu yang dijadwalkan hari ini.</div>
                 ) : (
                   bookings.filter(b => b.status === 'Paid').map((b) => (
-                    <div key={b.booking_code} className="border border-brand-100 rounded-2xl p-5 space-y-4 bg-brand-50/10">
+                    <div key={b.booking_code} className="border border-brand-100 rounded-2xl p-5 space-y-4 bg-brand-50/10 shadow-xs">
                       <div className="flex justify-between items-start border-b border-stone-100 pb-2.5">
                         <div>
                           <span className="text-xs font-mono font-bold text-brand-900">{b.booking_code}</span>
@@ -2459,16 +2965,39 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
 
                       <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
                         <div><span className="block text-[10px] text-stone-400">Nomor Kamar:</span><span className="font-bold text-stone-800">{b.room_number || 'A-1'} ({b.room_name})</span></div>
-                        <div><span className="block text-[10px] text-stone-400">Kontak:</span><span className="font-bold text-stone-850 font-mono">{b.phone}</span></div>
-                        <div className="col-span-2"><span className="block text-[10px] text-stone-400">Periode:</span><span className="font-bold text-stone-800">{b.check_in} s/d {b.check_out}</span></div>
+                        <div><span className="block text-[10px] text-stone-400">Kontak:</span><span className="font-bold text-stone-850 font-mono">📞 {b.phone}</span></div>
+                        <div className="col-span-2"><span className="block text-[10px] text-stone-400">Periode Reservasi:</span><span className="font-bold text-stone-800">📅 {b.check_in} s/d {b.check_out}</span></div>
                       </div>
 
-                      <button
-                        onClick={() => handleConfirmCheckIn(b.booking_code)}
-                        className="w-full p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all mt-1"
-                      >
-                        Konfirmasi Masuk (Check-In)
-                      </button>
+                      {/* Action buttons: Check-In, Perpanjang, Batal / No Show */}
+                      <div className="space-y-2 pt-2 border-t border-stone-100">
+                        <button
+                          onClick={() => handleConfirmCheckIn(b.booking_code)}
+                          className="w-full p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Konfirmasi Masuk (Check-In)</span>
+                        </button>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => handleOpenExtendBooking(b)}
+                            className="p-2 bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1"
+                          >
+                            <CalendarPlus className="w-3.5 h-3.5" />
+                            <span>Perpanjang</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleCancelBooking(b.booking_code)}
+                            className="p-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1"
+                            title="Tamu Tidak Datang / Batalkan Check-In"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>Batal / No Show</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))
                 )}
@@ -2481,15 +3010,17 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         {activeTab === 'check-out' && (
           <div className="space-y-6 animate-fadeIn">
             <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
-              <h3 className="font-serif font-bold text-brand-950 text-base">Antrean Check-Out Aktif</h3>
-              <p className="text-xs text-stone-500 mt-0.5">Selesaikan kunjungan tamu dan bebaskan status kamar menjadi kosong kembali.</p>
+              <div className="border-b border-stone-100 pb-3">
+                <h3 className="font-serif font-bold text-brand-950 text-base">Antrean Check-Out & Tamu Menginap</h3>
+                <p className="text-xs text-stone-500 mt-0.5">Selesaikan kunjungan tamu saat selesai menginap, atau proses perpanjangan masa tinggal langsung di sini.</p>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {bookings.filter(b => b.status === 'Checked In').length === 0 ? (
                   <div className="p-12 text-center text-stone-400 italic col-span-2">Tidak ada kamar terisi yang dijadwalkan keluar.</div>
                 ) : (
                   bookings.filter(b => b.status === 'Checked In').map((b) => (
-                    <div key={b.booking_code} className="border border-brand-100 rounded-2xl p-5 space-y-4 bg-brand-50/10">
+                    <div key={b.booking_code} className="border border-brand-100 rounded-2xl p-5 space-y-4 bg-brand-50/10 shadow-xs">
                       <div className="flex justify-between items-start border-b border-stone-100 pb-2.5">
                         <div>
                           <span className="text-xs font-mono font-bold text-brand-900">{b.booking_code}</span>
@@ -2502,15 +3033,28 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
 
                       <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
                         <div><span className="block text-[10px] text-stone-400">Unit Kamar:</span><span className="font-bold text-stone-800">{b.room_number || 'A-1'} ({b.room_name})</span></div>
-                        <div><span className="block text-[10px] text-stone-400">Rencana Keluar:</span><span className="font-bold text-stone-800 font-mono">{b.check_out}</span></div>
+                        <div><span className="block text-[10px] text-stone-400">Kontak:</span><span className="font-bold text-stone-850 font-mono">📞 {b.phone}</span></div>
+                        <div className="col-span-2"><span className="block text-[10px] text-stone-400">Jadwal Check-Out:</span><span className="font-bold text-stone-800 font-mono">📅 {b.check_out}</span></div>
                       </div>
 
-                      <button
-                        onClick={() => handleConfirmCheckOut(b.booking_code)}
-                        className="w-full p-2.5 bg-stone-800 hover:bg-stone-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all mt-1"
-                      >
-                        Konfirmasi Selesai (Check-Out)
-                      </button>
+                      {/* Action buttons: Perpanjang Menginap & Check-Out */}
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100">
+                        <button
+                          onClick={() => handleOpenExtendBooking(b)}
+                          className="p-2.5 bg-brand-700 hover:bg-brand-850 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <CalendarPlus className="w-4 h-4" />
+                          <span>Perpanjang</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleConfirmCheckOut(b.booking_code)}
+                          className="p-2.5 bg-stone-800 hover:bg-stone-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>Check-Out</span>
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -2851,16 +3395,36 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             <span className="text-stone-800 font-mono">📞 {activeBooking.phone}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-stone-400">Check-In:</span>
-                            <span className="text-stone-800">📅 {activeBooking.check_in}</span>
+                            <span className="text-stone-400">Jumlah Tamu:</span>
+                            <span className="text-stone-800">
+                              {activeBooking.guests || 2} Orang {activeBooking.extra_beds ? `(+${activeBooking.extra_beds} Kasur Tambahan)` : ''}
+                            </span>
+                          </div>
+                          <div className="flex justify-between border-t border-stone-200/40 pt-2">
+                            <span className="text-emerald-700 font-bold">🟢 Check-In:</span>
+                            <span className="text-emerald-900 font-bold">
+                              {formatAdminDayDateTime(activeBooking.check_in, activeBooking.check_in_time)}
+                            </span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-stone-400">Check-Out:</span>
-                            <span className="text-stone-800">📅 {activeBooking.check_out}</span>
+                            <span className="text-rose-700 font-bold">🔴 Check-Out:</span>
+                            <span className="text-rose-900 font-bold">
+                              {formatAdminDayDateTime(activeBooking.check_out, activeBooking.check_out_time)}
+                            </span>
                           </div>
+                          {Boolean(activeBooking.extra_beds && activeBooking.extra_beds > 0) && (
+                            <div className="flex justify-between bg-amber-50 p-2 rounded-lg border border-amber-200 text-amber-900">
+                              <span className="font-bold">🛏️ Kasur Tambahan:</span>
+                              <span className="font-mono font-bold">
+                                +{activeBooking.extra_beds} unit (+Rp{(activeBooking.extra_bed_price || (50000 * activeBooking.extra_beds)).toLocaleString('id-ID')})
+                              </span>
+                            </div>
+                          )}
                           <div className="flex justify-between">
-                            <span className="text-stone-400">Total Harga:</span>
-                            <span className="text-brand-900 font-bold font-mono">Rp{(activeBooking.total_price || 0).toLocaleString('id-ID')}</span>
+                            <span className="text-stone-400">Total Tagihan:</span>
+                            <span className="text-brand-900 font-bold font-mono text-sm">
+                              Rp{(activeBooking.total_price || 0).toLocaleString('id-ID')}
+                            </span>
                           </div>
                           <div className="flex justify-between items-center pt-2 border-t">
                             <span className="text-stone-400">Status Pembayaran:</span>
@@ -2873,6 +3437,19 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                               {activeBooking.status}
                             </span>
                           </div>
+                        </div>
+
+                        {/* Schedule Transition & Vacancy Explanation Box */}
+                        <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5 text-xs text-emerald-950">
+                          <p className="font-bold flex items-center gap-1 text-emerald-900">
+                            <span>ℹ️ Info Keterisian & Otomatisasi Jadwal:</span>
+                          </p>
+                          <p className="text-[11px] text-stone-700 leading-relaxed">
+                            Kamar terisi mulai <span className="font-bold text-stone-900">{getDayNameOnly(activeBooking.check_in)} pk {activeBooking.check_in_time || '14:00'} WIB</span> hingga <span className="font-bold text-stone-900">{getDayNameOnly(activeBooking.check_out)} pk {activeBooking.check_out_time || '12:00'} WIB</span>.
+                          </p>
+                          <p className="text-[11px] text-emerald-800 font-medium">
+                            ✨ Pada hari <span className="font-bold">{getDayNameOnly(activeBooking.check_out)}</span> setelah pk {activeBooking.check_out_time || '12:00'} WIB, status kamar otomatis <span className="font-bold text-emerald-950 uppercase">KOSONG</span> dan siap ditempati tamu berikutnya.
+                          </p>
                         </div>
 
                         {/* Interactive Actions for Room Box Popup */}
@@ -2917,14 +3494,24 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             <span>Edit Booking</span>
                           </button>
 
-                          {/* 5. Batalkan Booking */}
+                          {/* 5. Perpanjang Menginap */}
+                          <button
+                            onClick={() => handleOpenExtendBooking(activeBooking)}
+                            disabled={activeBooking.status === 'Cancelled' || activeBooking.status === 'Completed'}
+                            className="p-3 bg-brand-50 hover:bg-brand-100 disabled:opacity-45 disabled:pointer-events-none text-brand-900 border border-brand-200 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <CalendarPlus className="w-4 h-4" />
+                            <span>Perpanjang</span>
+                          </button>
+
+                          {/* 6. Batalkan Booking */}
                           <button
                             onClick={() => handleCancelBooking(activeBooking.booking_code)}
                             disabled={activeBooking.status === 'Cancelled' || activeBooking.status === 'Completed'}
-                            className="p-3 bg-red-50 hover:bg-red-100 disabled:opacity-45 disabled:pointer-events-none text-red-600 border border-red-200 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5 col-span-2 mt-1"
+                            className="p-3 bg-red-50 hover:bg-red-100 disabled:opacity-45 disabled:pointer-events-none text-red-600 border border-red-200 rounded-xl font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center gap-1.5"
                           >
                             <AlertTriangle className="w-4 h-4" />
-                            <span>Batalkan Reservasi</span>
+                            <span>Batalkan</span>
                           </button>
 
                         </div>
@@ -2991,6 +3578,166 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           lang={lang}
         />
       )}
+
+      {/* Stay Extension (Perpanjangan Menginap) Modal Overlay */}
+      <AnimatePresence>
+        {extensionModalBooking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-brand-200 space-y-5 animate-fadeIn max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-start justify-between border-b pb-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="p-3 bg-brand-100 text-brand-900 rounded-2xl shrink-0">
+                    <CalendarPlus className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-serif font-bold text-stone-900">
+                      {lang === 'id' ? 'Perpanjangan Menginap' : 'Stay Extension'}
+                    </h3>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      {lang === 'id' 
+                        ? 'Tambah durasi sewa kamar dan sesuaikan tagihan secara otomatis.' 
+                        : 'Extend guest stay duration and calculate total cost automatically.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExtensionModalBooking(null)}
+                  className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer rounded-lg hover:bg-stone-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Booking Context Box */}
+              <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-4 space-y-2 text-xs font-semibold">
+                <div className="flex justify-between">
+                  <span className="text-stone-400 font-normal">Kode Booking:</span>
+                  <span className="font-mono font-bold text-brand-900">{extensionModalBooking.bookingCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400 font-normal">Nama Tamu:</span>
+                  <span className="font-bold text-stone-800">👤 {extensionModalBooking.guestName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400 font-normal">Nomor WhatsApp:</span>
+                  <span className="font-mono text-stone-800">📞 {extensionModalBooking.phone}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400 font-normal">Unit Kamar:</span>
+                  <span className="font-semibold text-stone-850">
+                    {extensionModalBooking.roomNumber ? `Kamar No. ${extensionModalBooking.roomNumber}` : ''} ({extensionModalBooking.roomName})
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-stone-200/60 pt-2">
+                  <span className="text-stone-400 font-normal">Check-In Awal:</span>
+                  <span className="text-stone-800">📅 {extensionModalBooking.currentCheckIn}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400 font-normal">Check-Out Sekarang:</span>
+                  <span className="text-brand-900 font-bold">📅 {extensionModalBooking.currentCheckOut}</span>
+                </div>
+              </div>
+
+              {/* Extension Inputs Form */}
+              <div className="space-y-4 text-xs font-semibold">
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-stone-600 uppercase tracking-wider">
+                    {lang === 'id' ? 'Tanggal Check-Out Baru' : 'New Check-Out Date'} *
+                  </label>
+                  <input
+                    type="date"
+                    min={extensionModalBooking.currentCheckOut}
+                    value={extensionNewCheckOut}
+                    onChange={(e) => handleExtensionDateChange(e.target.value)}
+                    className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-brand-700 text-xs font-mono font-bold text-stone-900 bg-white"
+                    required
+                  />
+                  <p className="text-[10px] text-stone-400 mt-1">
+                    Durasi tambahan: <span className="font-bold text-brand-900">{extensionExtraNights > 0 ? `+${extensionExtraNights} Malam Ekstra` : '0 Malam'}</span>
+                  </p>
+                </div>
+
+                {/* Additional Price Input */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-stone-600 uppercase tracking-wider">
+                    {lang === 'id' ? 'Biaya Tambahan Perpanjangan (Rp)' : 'Additional Extension Cost (IDR)'}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={extensionExtraPrice}
+                    onChange={(e) => setExtensionExtraPrice(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-brand-700 text-xs font-mono font-bold text-emerald-800 bg-white"
+                  />
+                  <p className="text-[10px] text-stone-400">
+                    Estimasi tarif: Rp{extensionModalBooking.pricePerNight.toLocaleString('id-ID')} / malam. Anda dapat menyesuaikan nominal ini.
+                  </p>
+                </div>
+
+                {/* Total Summary */}
+                <div className="p-3.5 bg-brand-50/70 border border-brand-200 rounded-xl space-y-1.5">
+                  <div className="flex justify-between text-xs text-stone-600">
+                    <span>Tagihan Lama:</span>
+                    <span className="font-mono">Rp{(extensionModalBooking.totalPrice || 0).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-stone-600">
+                    <span>Biaya Tambahan:</span>
+                    <span className="font-mono text-emerald-700 font-bold">+Rp{(extensionExtraPrice || 0).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-brand-950 border-t border-brand-200/80 pt-1.5">
+                    <span>Total Tagihan Baru:</span>
+                    <span className="font-mono text-brand-900">
+                      Rp{((extensionModalBooking.totalPrice || 0) + (extensionExtraPrice || 0)).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Conflict warning if applicable */}
+                {extensionAvailabilityWarning && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{extensionAvailabilityWarning}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setExtensionModalBooking(null)}
+                  disabled={isSubmittingExtension}
+                  className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  {lang === 'id' ? 'Batal' : 'Cancel'}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleExecuteExtendStay}
+                  disabled={isSubmittingExtension || extensionExtraNights <= 0}
+                  className="flex-2 py-3 bg-brand-700 hover:bg-brand-850 disabled:opacity-50 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSubmittingExtension ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{lang === 'id' ? 'Simpan Perpanjangan' : 'Confirm Extension'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Confirmation Modal for Tolak / Batalkan Booking */}
       <AnimatePresence>

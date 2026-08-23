@@ -3,13 +3,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, Users, Coffee, Bike, Car, Sparkles, CheckCircle2, 
   HelpCircle, Receipt, Percent, Tag, MessageSquare, Compass, Info,
-  Upload, Camera, Loader2
+  Upload, Camera, Loader2, Ban, AlertTriangle, Bed, Clock, Plus, Minus
 } from 'lucide-react';
 import { Language, Room, AddOn } from '../types';
 import { ROOMS, ADD_ONS, TRANSLATIONS } from '../data';
 import { supabase, supabaseDebugInfo } from '../lib/supabase';
 import { logActivity, getQrisSettings, getDynamicQrisImageUrl } from '../services/adminService';
 import { sendAdminNotification } from '../services/fonnte';
+import { checkRoomAvailability, getLiveBookingsAndRooms } from '../lib/roomAvailability';
 
 // Import room images
 import roomEkonomi from '../assets/images/room_ekonomi_1782631326725.jpg';
@@ -159,6 +160,10 @@ interface BookingFormProps {
   prefilledCheckOut: string;
   prefilledGuests: number;
   formScrollTrigger: number;
+  onCheckInChange?: (date: string) => void;
+  onCheckOutChange?: (date: string) => void;
+  onGuestsChange?: (guests: number) => void;
+  onRoomChange?: (roomId: string) => void;
   onGoToCustomerPortal?: () => void;
 }
 
@@ -169,6 +174,10 @@ export default function BookingForm({
   prefilledCheckOut, 
   prefilledGuests,
   formScrollTrigger,
+  onCheckInChange,
+  onCheckOutChange,
+  onGuestsChange,
+  onRoomChange,
   onGoToCustomerPortal
 }: BookingFormProps) {
   const t = TRANSLATIONS[lang];
@@ -202,15 +211,52 @@ export default function BookingForm({
   const [selectedRoomId, setSelectedRoomId] = useState(prefilledRoomId || 'standard-room-utama');
   const [checkIn, setCheckIn] = useState(prefilledCheckIn || getTomorrowDate());
   const [checkOut, setCheckOut] = useState(prefilledCheckOut || getNextDayDate(prefilledCheckIn || getTomorrowDate()));
+  const [checkInTime, setCheckInTime] = useState('14:00');
+  const [checkOutTime, setCheckOutTime] = useState('12:00');
+  const [extraBeds, setExtraBeds] = useState(0);
   const [guests, setGuests] = useState(prefilledGuests || 2);
+
+  const formatDayAndDate = (dateStr: string, timeStr?: string, currentLang: Language = 'id') => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return dateStr;
+    const daysId = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const daysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const monthsId = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    const dayName = currentLang === 'id' ? daysId[d.getDay()] : daysEn[d.getDay()];
+    const monthName = currentLang === 'id' ? monthsId[d.getMonth()] : monthsEn[d.getMonth()];
+    const timeText = timeStr ? (currentLang === 'id' ? ` pukul ${timeStr} WIB` : ` at ${timeStr}`) : '';
+    return `${dayName}, ${d.getDate()} ${monthName} ${d.getFullYear()}${timeText}`;
+  };
 
   const handleCheckInChange = (newDate: string) => {
     setCheckIn(newDate);
+    onCheckInChange?.(newDate);
     const inDate = new Date(newDate);
     const outDate = new Date(checkOut);
     if (isNaN(outDate.getTime()) || outDate <= inDate) {
-      setCheckOut(getNextDayDate(newDate));
+      const nextDate = getNextDayDate(newDate);
+      setCheckOut(nextDate);
+      onCheckOutChange?.(nextDate);
     }
+  };
+
+  const handleCheckOutChange = (newDate: string) => {
+    setCheckOut(newDate);
+    onCheckOutChange?.(newDate);
+  };
+
+  const handleGuestsChange = (newGuests: number) => {
+    setGuests(newGuests);
+    onGuestsChange?.(newGuests);
+  };
+
+  const handleRoomSelect = (roomId: string) => {
+    setSelectedRoomId(roomId);
+    setExtraBeds(0);
+    onRoomChange?.(roomId);
   };
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -218,6 +264,33 @@ export default function BookingForm({
   const [specialRequests, setSpecialRequests] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const selectedAddOns: string[] = [];
+
+  // Live availability data
+  const [liveBookings, setLiveBookings] = useState<any[]>([]);
+  const [liveRooms, setLiveRooms] = useState<any[]>([]);
+
+  const refreshAvailability = async () => {
+    try {
+      const { bookings, dbRooms } = await getLiveBookingsAndRooms();
+      setLiveBookings(bookings);
+      setLiveRooms(dbRooms);
+    } catch (e) {
+      console.warn('[BookingForm] Error refreshing availability:', e);
+    }
+  };
+
+  useEffect(() => {
+    refreshAvailability();
+
+    const handleStorage = () => refreshAvailability();
+    window.addEventListener('storage', handleStorage);
+    const interval = setInterval(refreshAvailability, 10000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(interval);
+    };
+  }, []);
   
   // Coupon
   const [couponCode, setCouponCode] = useState('');
@@ -318,7 +391,39 @@ export default function BookingForm({
     if (prefilledGuests) setGuests(prefilledGuests);
   }, [prefilledRoomId, prefilledCheckIn, prefilledCheckOut, prefilledGuests, formScrollTrigger, rooms]);
 
+  // Auto-switch to available room if currently selected room is booked for the chosen dates
+  useEffect(() => {
+    if (rooms.length === 0) return;
+    const isChosenAvailable = checkRoomAvailability(
+      selectedRoom?.name || selectedRoomId,
+      checkIn,
+      checkOut,
+      liveBookings,
+      liveRooms
+    ).isAvailable;
+
+    if (!isChosenAvailable) {
+      // Find the first room type that has available units
+      const firstAvailable = rooms.find(r => 
+        checkRoomAvailability(r.name || r.id, checkIn, checkOut, liveBookings, liveRooms).isAvailable
+      );
+      if (firstAvailable && String(firstAvailable.id) !== String(selectedRoomId)) {
+        setSelectedRoomId(firstAvailable.id);
+      }
+    }
+  }, [checkIn, checkOut, liveBookings, liveRooms, rooms, selectedRoomId]);
+
   const selectedRoom = rooms.find(r => String(r.id) === String(selectedRoomId)) || rooms[0] || ROOMS[0];
+
+  // Live availability for currently selected room and dates
+  const currentRoomAvail = checkRoomAvailability(
+    selectedRoom?.name || selectedRoomId,
+    checkIn,
+    checkOut,
+    liveBookings,
+    liveRooms
+  );
+  const isCurrentRoomBooked = !currentRoomAvail.isAvailable;
 
   // Date math
   const checkInDate = new Date(checkIn);
@@ -327,10 +432,14 @@ export default function BookingForm({
   const nightsCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
 
   // Pricing math
+  const EXTRA_BED_RATE = 50000;
   const roomCost = calculateRoomCost(selectedRoom, checkIn, checkOut);
   const averagePrice = nightsCount > 0 ? Math.round(roomCost / nightsCount) : (selectedRoom ? selectedRoom.price : 0);
+  const extraBedCost = extraBeds * EXTRA_BED_RATE * nightsCount;
+  const baseCapacity = selectedRoom?.capacity || 2;
+  const effectiveMaxCapacity = baseCapacity + extraBeds;
 
-  const subtotal = roomCost;
+  const subtotal = roomCost + extraBedCost;
 
   // Discount math
   const discountAmount = activeDiscount ? (subtotal * activeDiscount.percent) / 100 : 0;
@@ -376,188 +485,42 @@ export default function BookingForm({
     const code = 'ZG-' + Math.floor(10000 + Math.random() * 90000);
     setGeneratedCode(code);
 
-    // 0. Check bookings conflict (offline localStorage & online Supabase sync)
-    try {
-      // Fetch local storage bookings
-      const existingRaw = localStorage.getItem('zegan_bookings');
-      let mergedBookings = existingRaw ? JSON.parse(existingRaw) : [];
-
-      // Try to fetch latest bookings from Supabase to prevent double booking
-      try {
-        const { data: dbBookings, error: dbBookingsErr } = await supabase
-          .from('bookings')
-          .select('booking_code, room_id, check_in, check_out, booking_status');
-
-        if (!dbBookingsErr && dbBookings) {
-          const formattedDbBookings = dbBookings.map((b: any) => ({
-            booking_code: b.booking_code,
-            room_id: b.room_id,
-            check_in: b.check_in,
-            check_out: b.check_out,
-            status: b.booking_status
-          }));
-          
-          // Merge unique bookings by booking_code
-          const localCodes = new Set(mergedBookings.map((b: any) => b.booking_code));
-          formattedDbBookings.forEach((dbB: any) => {
-            if (!localCodes.has(dbB.booking_code)) {
-              mergedBookings.push(dbB);
-            }
-          });
-        }
-      } catch (e) {
-        console.warn('[BookingForm] Failed to fetch remote bookings for conflict check, relying on local storage.', e);
-      }
-
-      // 1. Map physical rooms
-      const pRooms = [
-        { number: '1', type: 'utama', id: '6382483d-4498-4485-b9f5-da418b7c24f5' },
-        { number: '2', type: 'utama', id: '7793c710-ba72-4866-b59c-20aee507a5c9' },
-        { number: '3', type: 'pratama', id: 'cda230a5-0c0c-46f5-bd3a-40ed15ec4862' },
-        { number: '4', type: 'madya', id: '3dc9da2d-38e4-45e2-bc3d-e68881d50daa' },
-        { number: '5', type: 'pratama', id: '06daf026-6833-4bb0-b9fc-608a02f90784' },
-        { number: '6', type: 'family', id: 'bc8edfa0-b150-42aa-8874-a7c466fe3602' },
-        { number: '7', type: 'ekonomi', id: 'd2471912-9486-483b-b01c-64cb5e6dc148' },
-        { number: '8', type: 'ekonomi', id: '951a1d18-1908-4b67-9fd0-f2895f1d4928' },
-        { number: 'Rumah-1', type: 'rumah', id: 'd3296e6b-a5c5-4db5-ac9a-81664eb41d36' }
-      ];
-
-      // Identify selected room type category
-      const normId = String(selectedRoomId).toLowerCase();
-      let selectedCategory = '';
-      if (normId === 'standard-room-utama' || normId === 'b3daf9eb-8af2-40ff-86a8-e3e94e8149e5') selectedCategory = 'utama';
-      else if (normId === 'standard-room' || normId === '573c09f7-546f-452e-9fda-4ebf2d6ab77b') selectedCategory = 'pratama';
-      else if (normId === 'standard-room-madya' || normId === '2332632b-0ec0-4906-a6e1-68a518605c09') selectedCategory = 'madya';
-      else if (normId === 'family' || normId === '63a30aee-0c4b-49ce-8c5e-7ff4c9077481') selectedCategory = 'family';
-      else if (normId === 'ekonomi' || normId === '90ced547-d6b1-4089-9617-8972d45a5ad3') selectedCategory = 'ekonomi';
-      else if (normId === 'rumah' || normId === 'e8f31a0b-052a-4b29-8a93-06e8013fa623') selectedCategory = 'rumah';
-
-      if (selectedCategory) {
-        // Filter active bookings
-        const activeBookings = mergedBookings.filter((b: any) => b.status !== 'Cancelled' && b.status !== 'Expired' && b.booking_status !== 'Cancelled' && b.booking_status !== 'Expired');
-
-        // Check availability day-by-day
-        const dates: string[] = [];
-        let current = new Date(checkIn);
-        const end = new Date(checkOut);
-        while (current < end) {
-          dates.push(current.toISOString().substring(0, 10));
-          current.setDate(current.getDate() + 1);
-        }
-
-        let isAvailable = true;
-        for (const dStr of dates) {
-          const blockedNumbers = new Set<string>();
-
-          activeBookings.forEach((b: any) => {
-            const isOverlapping = dStr >= b.check_in && dStr < b.check_out;
-            if (!isOverlapping) return;
-
-            const bRoomNum = String(b.room_number || '');
-            const bRoomId = String(b.room_id || '');
-            const bRoomName = String(b.room_name || '').toLowerCase();
-
-            let bookedNum = '';
-            if (bRoomNum) {
-              bookedNum = bRoomNum;
-            } else {
-              const matchedPhys = pRooms.find(pr => pr.id === bRoomId || pr.number === bRoomId);
-              if (matchedPhys) {
-                bookedNum = matchedPhys.number;
-              } else if (bRoomName.includes('rumah')) {
-                bookedNum = 'Rumah-1';
-              } else if (bRoomName.includes('utama')) {
-                blockedNumbers.add('1');
-                blockedNumbers.add('2');
-              } else if (bRoomName.includes('pratama') || bRoomName.includes('standard room') && !bRoomName.includes('madya') && !bRoomName.includes('utama')) {
-                blockedNumbers.add('3');
-                blockedNumbers.add('5');
-              } else if (bRoomName.includes('madya')) {
-                blockedNumbers.add('4');
-              } else if (bRoomName.includes('family')) {
-                blockedNumbers.add('6');
-              } else if (bRoomName.includes('ekonomi') || bRoomName.includes('economy')) {
-                blockedNumbers.add('7');
-                blockedNumbers.add('8');
-              }
-            }
-
-            if (bookedNum) {
-              blockedNumbers.add(bookedNum);
-              // linkages
-              if (bookedNum === 'Rumah-1') {
-                blockedNumbers.add('3');
-                blockedNumbers.add('4');
-                blockedNumbers.add('5');
-                blockedNumbers.add('6');
-              }
-              if (['3', '4', '5', '6'].includes(bookedNum)) {
-                blockedNumbers.add('Rumah-1');
-              }
-            }
-          });
-
-          const categoryRooms = pRooms.filter(pr => pr.type === selectedCategory);
-          const availableInCat = categoryRooms.filter(pr => !blockedNumbers.has(pr.number));
-
-          if (availableInCat.length === 0) {
-            isAvailable = false;
-            break;
-          }
-        }
-
-        if (!isAvailable) {
-          throw new Error(lang === 'id'
-            ? `Maaf, kamar "${selectedRoom.name}" sudah terisi penuh pada tanggal ${checkIn} s/d ${checkOut} karena keterbatasan ketersediaan rumah / kamar terkait.`
-            : `Sorry, "${selectedRoom.name}" is fully booked from ${checkIn} to ${checkOut} due to limited availability of the house / related rooms.`
-          );
-        }
-      }
-    } catch (err: any) {
-      setSubmitError(err.message || 'Error checking room availability');
-      setIsSubmitting(false);
-      return;
-    }
-
-    // 1. Find an available physical room first to fail fast
-    let roomsData: any[] | null = null;
+    // 0. Check bookings availability using centralized roomAvailability engine
+    let assignedPhysicalRoomId = `room-${selectedRoomId}-1`;
     let isSupabaseHealthy = true;
+
     try {
-      const { data, error: roomsQueryError } = await supabase
-        .from('rooms')
-        .select('id, status, occupied_until')
-        .eq('room_type_id', selectedRoomId);
+      const { bookings: currentBookings, dbRooms: currentDbRooms } = await getLiveBookingsAndRooms();
+      const availCheck = checkRoomAvailability(
+        selectedRoom?.name || selectedRoomId,
+        checkIn,
+        checkOut,
+        currentBookings,
+        currentDbRooms
+      );
 
-      if (roomsQueryError) {
-        throw roomsQueryError;
-      }
-
-      const now = new Date();
-      const availableRooms = (data || []).filter(r => {
-        const isOccupiedUntilActive = r.occupied_until && new Date(r.occupied_until) > now;
-        if (isOccupiedUntilActive) return false;
-        return String(r.status).toLowerCase() === 'available';
-      });
-
-      if (availableRooms.length === 0) {
-        throw new Error(lang === 'id' 
-          ? `Maaf, tidak ada kamar fisik "${selectedRoom.name}" yang tersedia saat ini (semua terisi/penuh).` 
-          : `Sorry, there are no physical rooms available for "${selectedRoom.name}" at the moment.`
+      if (!availCheck.isAvailable) {
+        throw new Error(lang === 'id'
+          ? `Kamar "${selectedRoom.name}" sudah terkonfirmasi penuh untuk tanggal ${checkIn} s/d ${checkOut}. Silakan pilih tipe kamar lain.`
+          : `Room "${selectedRoom.name}" is already fully booked from ${checkIn} to ${checkOut}. Please select another room.`
         );
       }
-      roomsData = [availableRooms[0]];
+
+      // If physical rooms are available in dbRooms, match the appropriate one
+      const matchingDbRooms = currentDbRooms.filter(dr => 
+        String(dr.room_type_id) === String(selectedRoomId) || 
+        String(dr.type || '').toLowerCase() === String(selectedRoom?.name || '').toLowerCase()
+      );
+      if (matchingDbRooms.length > 0) {
+        assignedPhysicalRoomId = matchingDbRooms[0].id;
+      }
     } catch (err: any) {
-      // Graceful fallback if Supabase is unconfigured or returns API key error (e.g. "No API key found in request")
-      const isApiKeyErr = err.message?.includes('No API key') || err.message?.includes('API key') || err.message?.includes('invalid') || err.status === 400 || err.status === 401 || err.status === 403;
-      if (isApiKeyErr || err.message?.includes('Failed to fetch') || err.message?.includes('network')) {
-        console.warn('[BookingForm] Supabase unconfigured or offline. Falling back to local offline mode.', err);
-        isSupabaseHealthy = false;
-        roomsData = [{ id: `room-${selectedRoomId}-1` }];
-      } else {
-        setSubmitError(err.message || 'Error checking room availability');
+      if (err.message && (err.message.includes('terkonfirmasi penuh') || err.message.includes('fully booked'))) {
+        setSubmitError(err.message);
         setIsSubmitting(false);
         return;
       }
+      console.warn('[BookingForm] Availability check warning, proceeding gracefully:', err);
     }
 
     // 2. Insert to guests table
@@ -600,7 +563,7 @@ export default function BookingForm({
             {
               booking_code: code,
               guest_id: typeof guestId === 'number' ? guestId : null,
-              room_id: roomsData[0].id,
+              room_id: assignedPhysicalRoomId,
               check_in: checkIn,
               check_out: checkOut,
               adults: guests,
@@ -628,7 +591,11 @@ export default function BookingForm({
       room_id: selectedRoomId,
       check_in: checkIn,
       check_out: checkOut,
+      check_in_time: checkInTime,
+      check_out_time: checkOutTime,
       guests: guests,
+      extra_beds: extraBeds,
+      extra_bed_price: extraBedCost,
       full_name: fullName,
       email: email,
       phone: phone,
@@ -661,7 +628,11 @@ export default function BookingForm({
       room_name: selectedRoom.name,
       check_in: checkIn,
       check_out: checkOut,
+      check_in_time: checkInTime,
+      check_out_time: checkOutTime,
       guests: guests,
+      extra_beds: extraBeds,
+      extra_bed_price: extraBedCost,
       full_name: fullName,
       email: email,
       phone: phone,
@@ -808,8 +779,15 @@ export default function BookingForm({
 
   const getWhatsAppMessage = () => {
     const voucherLine = activeDiscount 
-      ? `\n- Voucher: ${activeDiscount.code} (Diskon ${activeDiscount.percent}%)`
+      ? `\n• Voucher: ${activeDiscount.code} (Diskon ${activeDiscount.percent}%)`
       : '';
+
+    const extraBedLine = extraBeds > 0
+      ? `\n• Kasur Tambahan (Extra Bed): ${extraBeds} unit (+Rp${extraBedCost.toLocaleString('id-ID')})`
+      : '';
+
+    const checkInFormatted = formatDayAndDate(checkIn, checkInTime, lang);
+    const checkOutFormatted = formatDayAndDate(checkOut, checkOutTime, lang);
 
     const text = 
 `Halo Admin Zegan Homestay! Saya ingin memesan kamar dengan detail berikut:
@@ -817,10 +795,10 @@ export default function BookingForm({
 🏨 *KODE BOOKING: ${generatedCode}*
 ----------------------------------------
 • Kamar: ${selectedRoom.name}
-• Check-in: ${checkIn}
-• Check-out: ${checkOut}
+• Check-in: ${checkInFormatted}
+• Check-out: ${checkOutFormatted}
 • Durasi: ${nightsCount} malam
-• Tamu: ${guests} orang${voucherLine}
+• Tamu: ${guests} orang (Kapasitas Maks: ${effectiveMaxCapacity} orang)${extraBedLine}${voucherLine}
 • Total Pembayaran: Rp${finalTotal.toLocaleString('id-ID')}
 
 👤 *DATA PEMESAN:*
@@ -877,9 +855,155 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
             <div className="space-y-4">
               <h3 className="text-lg font-serif font-normal text-brand-950 flex items-center gap-2 border-b border-brand-200/80 pb-3 mb-6">
                 <span className="w-6 h-6 rounded-full bg-brand-700 text-brand-100 text-xs flex items-center justify-center font-sans font-bold">1</span>
-                {lang === 'id' ? 'Detail Menginap' : 'Stay Details'}
+                {lang === 'id' ? 'Detail Menginap & Pilihan Kamar' : 'Stay Details & Room Selection'}
               </h3>
 
+              {/* Date and Hours Grid - Primary Input First */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-brand-950/70">{t.checkIn} *</label>
+                  <input
+                    id="booking-check-in"
+                    type="date"
+                    min={getTodayDate()}
+                    value={checkIn}
+                    onChange={(e) => handleCheckInChange(e.target.value)}
+                    className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
+                    required
+                  />
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                    <span className="text-[11px] text-stone-500 font-medium">{lang === 'id' ? 'Perkiraan Jam Check-In:' : 'Est. Check-in Time:'}</span>
+                    <select
+                      id="booking-check-in-time"
+                      value={checkInTime}
+                      onChange={(e) => setCheckInTime(e.target.value)}
+                      className="text-xs font-bold text-brand-900 bg-white border border-brand-200 rounded px-2 py-1 focus:outline-hidden focus:ring-1 focus:ring-brand-500"
+                    >
+                      {['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'].map(tVal => (
+                        <option key={tVal} value={tVal}>
+                          {tVal} WIB {tVal === '14:00' ? '(Standar)' : tVal === '07:00' ? '(Pagi/Early)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-brand-950/70">{t.checkOut} *</label>
+                  <input
+                    id="booking-check-out"
+                    type="date"
+                    min={checkIn}
+                    value={checkOut}
+                    onChange={(e) => handleCheckOutChange(e.target.value)}
+                    className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
+                    required
+                  />
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                    <span className="text-[11px] text-stone-500 font-medium">{lang === 'id' ? 'Rencana Jam Check-Out:' : 'Est. Check-out Time:'}</span>
+                    <select
+                      id="booking-check-out-time"
+                      value={checkOutTime}
+                      onChange={(e) => setCheckOutTime(e.target.value)}
+                      className="text-xs font-bold text-brand-900 bg-white border border-brand-200 rounded px-2 py-1 focus:outline-hidden focus:ring-1 focus:ring-brand-500"
+                    >
+                      {['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'].map(tVal => (
+                        <option key={tVal} value={tVal}>
+                          {tVal} WIB {tVal === '12:00' ? '(Standar)' : tVal === '07:00' ? '(Pagi)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alert if selected room is fully booked for selected dates */}
+              {isCurrentRoomBooked && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-amber-900 text-xs flex items-start gap-3 shadow-xs">
+                  <Ban className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold text-red-800 flex items-center gap-1.5 text-sm">
+                      <span>{lang === 'id' ? 'Kamar Terpesan Penuh pada Tanggal Ini' : 'Room Fully Booked on Selected Dates'}</span>
+                    </div>
+                    <p className="text-stone-700 leading-relaxed">
+                      {lang === 'id' 
+                        ? `Kamar "${selectedRoom.name}" sudah terpesan penuh untuk tanggal ${checkIn} s/d ${checkOut}. Silakan klik salah satu tipe kamar yang tersedia di bawah.` 
+                        : `Room "${selectedRoom.name}" is fully booked from ${checkIn} to ${checkOut}. Please click one of the available room types below.`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Real-time Room availability status badges for selected dates (Updates automatically on date change) */}
+              <div className="p-3.5 bg-brand-50/70 border border-brand-200/80 rounded-xl space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs text-brand-950 font-bold">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span>
+                      {lang === 'id' 
+                        ? `Status Ketersediaan Kamar (${formatDayAndDate(checkIn, '', 'id')} - ${formatDayAndDate(checkOut, '', 'id')}):` 
+                        : `Live Room Availability (${formatDayAndDate(checkIn, '', 'en')} - ${formatDayAndDate(checkOut, '', 'en')}):`}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-emerald-900 bg-emerald-100/90 font-semibold px-2 py-0.5 rounded-full">
+                    {lang === 'id' ? '⚡ Diperbarui Otomatis' : '⚡ Auto-Updated Live'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {rooms.map(r => {
+                    const rAvail = checkRoomAvailability(r.name || r.id, checkIn, checkOut, liveBookings, liveRooms);
+                    const isSelected = String(r.id) === String(selectedRoomId);
+                    const isBooked = !rAvail.isAvailable;
+                    const checkInDay = new Date(checkIn).getDay();
+                    const isWeekendCheckIn = (checkInDay === 6 || checkInDay === 0);
+                    const rPrice = isWeekendCheckIn && r.weekend_price ? r.weekend_price : r.price;
+
+                    if (isBooked) {
+                      return (
+                        <div
+                          key={`badge-${r.id}`}
+                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border flex items-center gap-1.5 select-none bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed opacity-75`}
+                          title={lang === 'id' ? `${r.name} sudah terpesan penuh` : `${r.name} is fully booked`}
+                        >
+                          <Ban className="w-3 h-3 text-red-500 shrink-0" />
+                          <span className="line-through">{r.name}</span>
+                          <span className="text-[10px] text-stone-400 font-normal">Rp{rPrice.toLocaleString('id-ID')}</span>
+                          <span className="text-[9px] bg-red-100 text-red-700 px-1 py-0.2 rounded font-bold uppercase">{lang === 'id' ? 'Penuh' : 'Full'}</span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        key={`badge-${r.id}`}
+                        onClick={() => handleRoomSelect(r.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-brand-700 text-white border-brand-800 shadow-xs'
+                            : 'bg-white text-stone-700 border-emerald-300 hover:border-brand-500 hover:bg-brand-50'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-300' : 'bg-emerald-500'}`}></span>
+                        <span className="font-semibold">{r.name}</span>
+                        <span className={`font-mono font-bold ${isSelected ? 'text-amber-200' : 'text-brand-900'}`}>
+                          Rp{rPrice.toLocaleString('id-ID')}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${isSelected ? 'bg-brand-850 text-brand-100' : 'bg-emerald-100 text-emerald-800'}`}>
+                          {rAvail.availableCount} {lang === 'id' ? 'tersedia' : 'left'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Room Selection Dropdown & Guests */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-brand-950/70 mb-2">
@@ -893,7 +1017,7 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                   <select
                     id="booking-room-type"
                     value={selectedRoomId}
-                    onChange={(e) => setSelectedRoomId(e.target.value)}
+                    onChange={(e) => handleRoomSelect(e.target.value)}
                     className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
                   >
                     {roomsLoading ? (
@@ -903,9 +1027,20 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                         const checkInDay = new Date(checkIn).getDay();
                         const isWeekendCheckIn = (checkInDay === 6 || checkInDay === 0);
                         const displayPrice = isWeekendCheckIn && r.weekend_price ? r.weekend_price : r.price;
+                        const rAvail = checkRoomAvailability(r.name || r.id, checkIn, checkOut, liveBookings, liveRooms);
+                        const isBooked = !rAvail.isAvailable;
+
                         return (
-                          <option key={r.id} value={r.id}>
-                            {r.name} - Rp{displayPrice.toLocaleString('id-ID')}/{t.perNight}
+                          <option 
+                            key={r.id} 
+                            value={r.id}
+                            disabled={isBooked}
+                            className={isBooked ? 'text-stone-400 bg-stone-100' : ''}
+                          >
+                            {isBooked
+                              ? `❌ [TERPESAN / PENUH] ${r.name}`
+                              : `🟢 ${r.name} (${rAvail.availableCount} Unit Tersedia) - Rp${displayPrice.toLocaleString('id-ID')}/${t.perNight}`
+                            }
                           </option>
                         );
                       })
@@ -914,48 +1049,135 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-brand-950/70 mb-2">{t.guestsCount}</label>
+                  <label className="block text-xs font-semibold text-brand-950/70 mb-2">
+                    {t.guestsCount} (Kapasitas: {effectiveMaxCapacity} Orang)
+                  </label>
                   <select
                     id="booking-guests-count"
                     value={guests}
-                    onChange={(e) => setGuests(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newCount = Number(e.target.value);
+                      handleGuestsChange(newCount);
+                      if (newCount > baseCapacity) {
+                        const neededExtra = newCount - baseCapacity;
+                        if (extraBeds < neededExtra) {
+                          setExtraBeds(neededExtra);
+                        }
+                      }
+                    }}
                     className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
                   >
-                    {[1, 2, 3, 4, 5, 6].map(num => (
-                      <option key={num} value={num}>
-                        {num} {lang === 'id' ? 'Orang' : 'Guests'} (Max {selectedRoom.capacity})
-                      </option>
-                    ))}
+                    {[...Array(Math.max(6, effectiveMaxCapacity))].map((_, i) => {
+                      const num = i + 1;
+                      const isExtraRequired = num > baseCapacity;
+                      return (
+                        <option key={num} value={num}>
+                          {num} {lang === 'id' ? 'Orang' : 'Guests'} {isExtraRequired ? `(+${num - baseCapacity} Ekstra Kasur)` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-brand-950/70 mb-2">{t.checkIn}</label>
-                  <input
-                    id="booking-check-in"
-                    type="date"
-                    min={getTodayDate()}
-                    value={checkIn}
-                    onChange={(e) => handleCheckInChange(e.target.value)}
-                    className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
-                    required
-                  />
+              {/* Extra Bed Add-on Section */}
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-4 transition-all">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-900 shrink-0 mt-0.5">
+                      <Bed className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-amber-950 font-serif">
+                          {lang === 'id' ? 'Tambah Kasur (Extra Bed)' : 'Add Extra Bed'}
+                        </span>
+                        <span className="text-[10px] bg-amber-200/80 text-amber-900 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          +Rp 50.000 / malam
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800/80 mt-0.5">
+                        {lang === 'id' 
+                          ? `Menambah kapasitas tidur (+1 orang per kasur). Kapasitas saat ini: ${effectiveMaxCapacity} tamu.`
+                          : `Increases sleeping capacity (+1 guest per bed). Current capacity: ${effectiveMaxCapacity} guests.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Stepper Counter */}
+                  <div className="flex items-center gap-2 self-end sm:self-auto bg-white px-2 py-1.5 rounded-lg border border-amber-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = Math.max(0, extraBeds - 1);
+                        setExtraBeds(nextVal);
+                        if (guests > baseCapacity + nextVal) {
+                          setGuests(baseCapacity + nextVal);
+                        }
+                      }}
+                      disabled={extraBeds === 0}
+                      className="w-7 h-7 rounded bg-amber-100 hover:bg-amber-200 disabled:opacity-30 disabled:cursor-not-allowed text-amber-950 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Kurangi Kasur"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-8 text-center text-xs font-bold text-amber-950">
+                      {extraBeds}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const maxExtra = selectedRoom.name.includes('Family') || selectedRoom.name.includes('Rumah') ? 3 : 2;
+                        if (extraBeds < maxExtra) {
+                          setExtraBeds(extraBeds + 1);
+                        }
+                      }}
+                      disabled={extraBeds >= (selectedRoom.name.includes('Family') || selectedRoom.name.includes('Rumah') ? 3 : 2)}
+                      className="w-7 h-7 rounded bg-amber-700 hover:bg-amber-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors cursor-pointer"
+                      title="Tambah Kasur"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-brand-950/70 mb-2">{t.checkOut}</label>
-                  <input
-                    id="booking-check-out"
-                    type="date"
-                    min={checkIn}
-                    value={checkOut}
-                    onChange={(e) => setCheckOut(e.target.value)}
-                    className="w-full px-4 py-3 bg-brand-50 rounded-lg border border-brand-200 text-brand-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-600 focus:border-brand-600 font-medium transition-colors"
-                    required
-                  />
+                {extraBeds > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs text-amber-900 font-medium">
+                    <span>Biaya Tambahan Kasur ({extraBeds} unit x {nightsCount} malam):</span>
+                    <span className="font-bold font-mono text-sm text-amber-950">
+                      + Rp{extraBedCost.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Dynamic Schedule & Vacancy Explanation Box */}
+              <div className="bg-stone-50 rounded-xl p-4 border border-stone-200/80 text-xs space-y-2">
+                <div className="font-bold text-brand-950 flex items-center gap-1.5 font-serif">
+                  <Calendar className="w-4 h-4 text-brand-700" />
+                  <span>{lang === 'id' ? 'Keterangan Jadwal Menginap & Ketersediaan Kamar' : 'Stay Schedule & Room Availability Details'}</span>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-3 rounded-lg border border-stone-200 text-[11px]">
+                  <div className="space-y-0.5">
+                    <span className="text-stone-400 uppercase text-[9px] font-bold block">🟢 Check-In</span>
+                    <span className="font-bold text-stone-900 block">{formatDayAndDate(checkIn, checkInTime, lang)}</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-stone-400 uppercase text-[9px] font-bold block">🔴 Check-Out</span>
+                    <span className="font-bold text-stone-900 block">{formatDayAndDate(checkOut, checkOutTime, lang)}</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-stone-600 leading-relaxed font-light">
+                  {lang === 'id' ? (
+                    <>
+                      Kamar terisi dari <strong>{formatDayAndDate(checkIn, checkInTime, 'id')}</strong> sampai <strong>{formatDayAndDate(checkOut, checkOutTime, 'id')}</strong>. Setelah pukul <strong>{checkOutTime} WIB</strong> di hari {formatDayAndDate(checkOut, '', 'id')}, kamar akan <strong>kosong & siap dibersihkan</strong> untuk tamu berikutnya.
+                    </>
+                  ) : (
+                    <>
+                      Room is booked from <strong>{formatDayAndDate(checkIn, checkInTime, 'en')}</strong> until <strong>{formatDayAndDate(checkOut, checkOutTime, 'en')}</strong>. After <strong>{checkOutTime}</strong> on {formatDayAndDate(checkOut, '', 'en')}, the room will become <strong>available & ready</strong> for subsequent check-ins.
+                    </>
+                  )}
+                </p>
               </div>
             </div>
 
@@ -1032,27 +1254,39 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
 
             {/* Submit Button */}
             <div className="pt-4">
-              <button
-                id="submit-booking-form"
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-brand-700 hover:bg-brand-850 disabled:bg-brand-500 disabled:cursor-not-allowed text-white font-bold py-4 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-widest cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>{lang === 'id' ? 'Memproses...' : 'Processing...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span>{lang === 'id' ? 'Proses Reservasi Kamar' : 'Process Room Reservation'}</span>
-                  </>
-                )}
-              </button>
+              {isCurrentRoomBooked ? (
+                <button
+                  id="submit-booking-form"
+                  type="button"
+                  disabled
+                  className="w-full bg-stone-300 text-stone-500 font-bold py-4 rounded-lg border border-stone-300 shadow-none flex items-center justify-center gap-2 text-xs uppercase tracking-widest cursor-not-allowed select-none"
+                >
+                  <Ban className="w-5 h-5 text-stone-400" />
+                  <span>{lang === 'id' ? 'Kamar Terpesan / Tidak Tersedia' : 'Room Fully Booked / Unavailable'}</span>
+                </button>
+              ) : (
+                <button
+                  id="submit-booking-form"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full bg-brand-700 hover:bg-brand-850 disabled:bg-brand-500 disabled:cursor-not-allowed text-white font-bold py-4 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-widest cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>{lang === 'id' ? 'Memproses...' : 'Processing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span>{lang === 'id' ? 'Proses Reservasi Kamar' : 'Process Room Reservation'}</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
           </form>
@@ -1083,8 +1317,15 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                   <span className="text-[10px] uppercase tracking-widest text-brand-300 font-bold">Stay Room Type</span>
                   <h4 className="font-bold text-white text-sm mt-0.5">{selectedRoom.name}</h4>
                   <div className="flex items-center gap-1.5 text-xs text-brand-200/60 mt-1">
-                    <Calendar className="w-3.5 h-3.5 text-brand-400" />
-                    <span>{nightsCount} {lang === 'id' ? 'Malam' : 'Nights'} ({checkIn} - {checkOut})</span>
+                    <Calendar className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+                    <span>{nightsCount} {lang === 'id' ? 'Malam' : 'Nights'}</span>
+                  </div>
+                  <div className="text-[11px] text-brand-200/80 mt-1 space-y-0.5 font-light">
+                    <div>🟢 In: {formatDayAndDate(checkIn, checkInTime, lang)}</div>
+                    <div>🔴 Out: {formatDayAndDate(checkOut, checkOutTime, lang)}</div>
+                    {extraBeds > 0 && (
+                      <div className="text-amber-300 font-medium">🛏️ +{extraBeds} Extra Bed (Kapasitas {effectiveMaxCapacity} org)</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1102,11 +1343,23 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                   </span>
                 </div>
 
+                {/* Extra Bed charge if applicable */}
+                {extraBeds > 0 && (
+                  <div className="flex justify-between text-amber-200">
+                    <span>
+                      {lang === 'id' ? 'Kasur Tambahan' : 'Extra Bed'} ({extraBeds} unit x {nightsCount} mlm)
+                    </span>
+                    <span className="font-semibold">
+                      + Rp{extraBedCost.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                )}
+
                 {/* Room subtotal */}
                 <div className="flex justify-between border-b border-brand-800 pb-3">
                   <span className="text-brand-200/80 font-medium">{t.baseTotal}</span>
                   <span className="font-bold text-white">
-                    Rp{roomCost.toLocaleString('id-ID')}
+                    Rp{subtotal.toLocaleString('id-ID')}
                   </span>
                 </div>
 

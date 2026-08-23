@@ -30,20 +30,25 @@ export async function sendAdminNotification(booking: Booking, roomType: string):
   // Format price
   const formattedPrice = new Intl.NumberFormat('id-ID').format(booking.total_price);
 
-  // Format dates nicely
-  const formatDate = (dateStr: string) => {
+  // Format dates with Indonesian day names and hours nicely
+  const formatDateWithTime = (dateStr: string, timeStr?: string) => {
     try {
-      const date = new Date(dateStr);
+      const date = new Date(dateStr + 'T00:00:00');
       if (isNaN(date.getTime())) return dateStr;
-      return date.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric'
-      });
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+      const dayName = days[date.getDay()];
+      const monthName = months[date.getMonth()];
+      const formatted = `${dayName}, ${date.getDate()} ${monthName} ${date.getFullYear()}`;
+      return timeStr ? `${formatted} (pk ${timeStr} WIB)` : formatted;
     } catch {
       return dateStr;
     }
   };
+
+  const extraBedLine = (booking.extra_beds && booking.extra_beds > 0)
+    ? `\nKasur Tambahan (Extra Bed) :\n${booking.extra_beds} unit (+Rp ${(booking.extra_bed_price || booking.extra_beds * 50000).toLocaleString('id-ID')})\n`
+    : '';
 
   // Construct message matching user's exact specification
   const message = `🔔 BOOKING BARU
@@ -71,18 +76,18 @@ Tipe Kamar :
 ${roomType}
 
 Check In :
-${formatDate(booking.check_in)}
+${formatDateWithTime(booking.check_in, booking.check_in_time)}
 
 Check Out :
-${formatDate(booking.check_out)}
+${formatDateWithTime(booking.check_out, booking.check_out_time)}
 
 Jumlah Tamu :
-${booking.guests}
-
+${booking.guests} orang (Kapasitas: ${booking.guests + (booking.extra_beds || 0)} orang)
+${extraBedLine}
 Total Pembayaran :
 Rp ${formattedPrice}
 
-Silakan menunggu pembayaran dari customer.`;
+Silakan menunggu konfirmasi pembayaran dari customer.`;
 
   try {
     const headers = new Headers();

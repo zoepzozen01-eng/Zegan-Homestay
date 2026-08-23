@@ -24,12 +24,38 @@ export default function App() {
   const [isLookupOpen, setIsLookupOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   
-  // Prefill States for Booking Form
+  // Synchronized search and booking dates/guests across Hero and BookingForm
+  const formatDateStr = (date: Date) => date.toISOString().split('T')[0];
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const dayAfter = new Date(tomorrow);
+  dayAfter.setDate(tomorrow.getDate() + 1);
+
   const [prefilledRoomId, setPrefilledRoomId] = useState('deluxe');
-  const [prefilledCheckIn, setPrefilledCheckIn] = useState('');
-  const [prefilledCheckOut, setPrefilledCheckOut] = useState('');
+  const [prefilledCheckIn, setPrefilledCheckIn] = useState(() => formatDateStr(tomorrow));
+  const [prefilledCheckOut, setPrefilledCheckOut] = useState(() => formatDateStr(dayAfter));
   const [prefilledGuests, setPrefilledGuests] = useState(2);
   const [formScrollTrigger, setFormScrollTrigger] = useState(0);
+
+  const handleHeroCheckInChange = (newIn: string) => {
+    setPrefilledCheckIn(newIn);
+    const inD = new Date(newIn);
+    const outD = new Date(prefilledCheckOut);
+    if (isNaN(outD.getTime()) || outD <= inD) {
+      const nextD = new Date(newIn);
+      nextD.setDate(nextD.getDate() + 1);
+      setPrefilledCheckOut(formatDateStr(nextD));
+    }
+  };
+
+  const handleHeroCheckOutChange = (newOut: string) => {
+    setPrefilledCheckOut(newOut);
+  };
+
+  const handleHeroGuestsChange = (newGuests: number) => {
+    setPrefilledGuests(newGuests);
+  };
 
   // Path-based routing state
   const [path, setPath] = useState(() => window.location.pathname);
@@ -101,7 +127,8 @@ export default function App() {
   };
 
   // From quick search hero widget
-  const handleQuickSearch = (checkIn: string, checkOut: string, guests: number) => {
+  const handleQuickSearch = (checkIn: string, checkOut: string, guests: number, roomId?: string) => {
+    if (roomId) setPrefilledRoomId(roomId);
     setPrefilledCheckIn(checkIn);
     setPrefilledCheckOut(checkOut);
     setPrefilledGuests(guests);
@@ -231,7 +258,13 @@ export default function App() {
         <>
           {/* 2. Hero Section */}
           <Hero 
-            lang={lang} 
+            lang={lang}
+            checkIn={prefilledCheckIn}
+            checkOut={prefilledCheckOut}
+            guests={prefilledGuests}
+            onCheckInChange={handleHeroCheckInChange}
+            onCheckOutChange={handleHeroCheckOutChange}
+            onGuestsChange={handleHeroGuestsChange}
             onQuickSearch={handleQuickSearch} 
           />
 
@@ -261,6 +294,10 @@ export default function App() {
             prefilledCheckOut={prefilledCheckOut}
             prefilledGuests={prefilledGuests}
             formScrollTrigger={formScrollTrigger}
+            onCheckInChange={handleHeroCheckInChange}
+            onCheckOutChange={handleHeroCheckOutChange}
+            onGuestsChange={handleHeroGuestsChange}
+            onRoomChange={(roomId) => setPrefilledRoomId(roomId)}
             onGoToCustomerPortal={() => setView('customer-portal')}
           />
 

@@ -72,7 +72,11 @@ export interface Booking {
   room_number?: string;
   check_in: string;
   check_out: string;
+  check_in_time?: string;
+  check_out_time?: string;
   guests: number;
+  extra_beds?: number;
+  extra_bed_price?: number;
   full_name: string;
   email: string;
   phone: string;

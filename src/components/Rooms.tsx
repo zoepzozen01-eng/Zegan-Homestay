@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Maximize, Users, Star, ArrowRight, Eye, CheckCircle2 } from 'lucide-react';
+import { Maximize, Users, Star, ArrowRight, Eye, CheckCircle2, Ban } from 'lucide-react';
 import { Room, Language } from '../types';
 import { ROOMS, TRANSLATIONS } from '../data';
 import { supabase, supabaseDebugInfo } from '../lib/supabase';
+import { checkRoomAvailability, getLiveBookingsAndRooms } from '../lib/roomAvailability';
 
 // Import room images
 import roomEkonomi from '../assets/images/room_ekonomi_1782631326725.jpg';
@@ -14,6 +15,8 @@ import roomStandardUtama from '../assets/images/room_standard_utama_178263139368
 
 interface RoomsProps {
   lang: Language;
+  checkIn?: string;
+  checkOut?: string;
   onSelectRoom: (room: Room) => void;
   onBookRoom: (roomId: string) => void;
 }
@@ -108,6 +111,37 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
   const [rooms, setRooms] = useState<Room[]>(ROOMS);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [liveBookings, setLiveBookings] = useState<any[]>([]);
+  const [liveRooms, setLiveRooms] = useState<any[]>([]);
+
+  const todayStr = new Date().toISOString().substring(0, 10);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().substring(0, 10);
+
+  // Sync live bookings & dbRooms from Supabase and localStorage
+  const refreshAvailability = async () => {
+    try {
+      const { bookings, dbRooms } = await getLiveBookingsAndRooms();
+      setLiveBookings(bookings);
+      setLiveRooms(dbRooms);
+    } catch (e) {
+      console.warn('Error refreshing live availability in Rooms:', e);
+    }
+  };
+
+  useEffect(() => {
+    refreshAvailability();
+
+    const handleStorage = () => refreshAvailability();
+    window.addEventListener('storage', handleStorage);
+    const interval = setInterval(refreshAvailability, 10000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchRooms() {
@@ -139,6 +173,8 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
               id: String(row.id),
               name: row.name,
               price: Number(row.weekday_price),
+              weekendPrice: Number(row.weekend_price) || Number(row.weekday_price),
+              weekend_price: Number(row.weekend_price) || Number(row.weekday_price),
               description: {
                 id: row.description || '',
                 en: row.description || ''
@@ -204,103 +240,159 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {rooms.map((room, idx) => (
-              <motion.div
-                key={room.id}
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-50px' }}
-                transition={{ duration: 0.6, delay: idx * 0.15 }}
-                className="bg-brand-100/40 rounded-2xl overflow-hidden border border-brand-200/80 hover:border-brand-300 hover:shadow-md transition-all flex flex-col justify-between h-full group"
-              >
-                {/* Image & Price Overlay */}
-                <div className="relative h-60 overflow-hidden cursor-pointer" onClick={() => onSelectRoom(room)}>
-                  <img
-                    src={room.image}
-                    alt={room.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  
-                  {/* Float Badge */}
-                  <div className="absolute top-4 left-4 bg-brand-50/90 border border-brand-200/50 backdrop-blur-xs px-3 py-1 rounded-full text-[11px] font-bold text-brand-950 flex items-center gap-1 shadow-sm">
-                    <Star className="w-3.5 h-3.5 text-brand-300 fill-current" />
-                    <span>{room.rating.toFixed(1)}</span>
-                  </div>
+            {rooms.map((room, idx) => {
+              const avail = checkRoomAvailability(room.name || room.id, todayStr, tomorrowStr, liveBookings, liveRooms);
+              const isFullyBooked = !avail.isAvailable;
 
-                  {/* Room Number Badge */}
-                  {room.roomNumbers && (
-                    <div className="absolute top-4 right-4 bg-brand-950/80 text-white backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] font-medium tracking-wide">
-                      No: {room.roomNumbers}
-                    </div>
-                  )}
-
-                  {/* Price Display */}
-                  <div className="absolute bottom-3 left-4 right-4 flex justify-between items-end text-white">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg sm:text-xl font-serif font-bold text-white">
-                          Rp{room.price.toLocaleString('id-ID')}
-                        </span>
-                        <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded text-stone-100 font-sans">
-                          Weekday
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-stone-200 mt-0.5 flex items-center gap-1.5">
-                        <span>Weekend: <strong className="font-semibold text-white">Rp{(room.weekendPrice || room.weekend_price || room.price).toLocaleString('id-ID')}</strong></span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Content details */}
-                <div className="p-6 flex flex-col justify-between flex-1">
-                  <div>
-                    <h3 className="text-xl sm:text-2xl font-serif font-normal text-brand-950 mb-2 group-hover:text-brand-300 transition-colors">
-                      {room.name}
-                    </h3>
+              return (
+                <motion.div
+                  key={room.id}
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-50px' }}
+                  transition={{ duration: 0.6, delay: idx * 0.15 }}
+                  className={`rounded-2xl overflow-hidden border transition-all flex flex-col justify-between h-full group ${
+                    isFullyBooked 
+                      ? 'bg-stone-100/90 border-stone-300/80 shadow-xs' 
+                      : 'bg-brand-100/40 border-brand-200/80 hover:border-brand-300 hover:shadow-md'
+                  }`}
+                >
+                  {/* Image & Price Overlay */}
+                  <div className="relative h-60 overflow-hidden cursor-pointer" onClick={() => onSelectRoom(room)}>
+                    <img
+                      src={room.image}
+                      alt={room.name}
+                      className={`w-full h-full object-cover transition-transform duration-500 ${
+                        isFullyBooked ? 'grayscale-[35%] opacity-90' : 'group-hover:scale-105'
+                      }`}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                     
-                    <p className="text-xs text-stone-600 line-clamp-3 mb-6 min-h-[54px] leading-relaxed">
-                      {room.description[lang]}
-                    </p>
+                    {/* Float Rating Badge */}
+                    <div className="absolute top-4 left-4 bg-brand-50/90 border border-brand-200/50 backdrop-blur-xs px-3 py-1 rounded-full text-[11px] font-bold text-brand-950 flex items-center gap-1 shadow-sm">
+                      <Star className="w-3.5 h-3.5 text-brand-300 fill-current" />
+                      <span>{room.rating.toFixed(1)}</span>
+                    </div>
 
-                    {/* Amenities Row */}
-                    <div className="flex items-center gap-4 text-xs text-stone-600 border-t border-brand-200/60 pt-4 mb-6">
-                      <div className="flex items-center gap-1">
-                        <Maximize className="w-4 h-4 text-brand-600" />
-                        <span className="font-semibold">{room.size}</span>
+                    {/* Room Availability Status Badge */}
+                    <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                      {isFullyBooked ? (
+                        <div className="bg-red-950/85 text-red-200 border border-red-500/40 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+                          <span>{lang === 'id' ? 'Terpesan (Penuh)' : 'Fully Booked'}</span>
+                        </div>
+                      ) : (
+                        <div className="bg-emerald-950/80 text-emerald-200 border border-emerald-500/30 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] font-medium tracking-wide flex items-center gap-1 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                          <span>{avail.availableCount} {lang === 'id' ? 'Unit Tersedia' : 'Available'}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Price Display */}
+                    <div className="absolute bottom-3 left-4 right-4 flex justify-between items-end text-white">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg sm:text-xl font-serif font-bold text-white">
+                            Rp{room.price.toLocaleString('id-ID')}
+                          </span>
+                          <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded text-stone-100 font-sans">
+                            Weekday
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-stone-200 mt-0.5 flex items-center gap-1.5">
+                          <span>Weekend: <strong className="font-semibold text-white">Rp{(room.weekendPrice || room.weekend_price || room.price).toLocaleString('id-ID')}</strong></span>
+                        </div>
                       </div>
-                      <div className="w-1.5 h-1.5 bg-brand-200 rounded-full" />
-                      <div className="flex items-center gap-1">
-                        <Users className="w-4 h-4 text-brand-600" />
-                        <span className="font-semibold">Max {room.capacity} {lang === 'id' ? 'Tamu' : 'Guests'}</span>
-                      </div>
+                      
+                      {room.roomNumbers && (
+                        <div className="text-[10px] bg-black/40 text-stone-200 px-2 py-0.5 rounded font-mono">
+                          No: {room.roomNumbers}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <button
-                      id={`view-detail-btn-${room.id}`}
-                      onClick={() => onSelectRoom(room)}
-                      className="w-full bg-brand-100 hover:bg-brand-200 text-brand-950 font-semibold py-3 px-4 rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all border border-brand-200 cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4 text-brand-600" />
-                      <span>{t.viewDetail}</span>
-                    </button>
+                  {/* Content details */}
+                  <div className="p-6 flex flex-col justify-between flex-1">
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className={`text-xl sm:text-2xl font-serif font-normal transition-colors ${
+                          isFullyBooked ? 'text-stone-700' : 'text-brand-950 group-hover:text-brand-300'
+                        }`}>
+                          {room.name}
+                        </h3>
+                      </div>
+                      
+                      <p className="text-xs text-stone-600 line-clamp-3 mb-6 min-h-[54px] leading-relaxed">
+                        {room.description[lang]}
+                      </p>
 
-                    <button
-                      id={`book-room-btn-${room.id}`}
-                      onClick={() => onBookRoom(room.id)}
-                      className="w-full bg-brand-700 hover:bg-brand-850 text-white font-bold py-3 px-4 rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-brand-300" />
-                      <span>{t.bookNow}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                      {/* Amenities Row */}
+                      <div className="flex items-center justify-between text-xs text-stone-600 border-t border-brand-200/60 pt-4 mb-6">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <Maximize className="w-4 h-4 text-brand-600" />
+                            <span className="font-semibold">{room.size}</span>
+                          </div>
+                          <div className="w-1.5 h-1.5 bg-brand-200 rounded-full" />
+                          <div className="flex items-center gap-1">
+                            <Users className="w-4 h-4 text-brand-600" />
+                            <span className="font-semibold">Max {room.capacity} {lang === 'id' ? 'Tamu' : 'Guests'}</span>
+                          </div>
+                        </div>
+
+                        {/* Availability Pill */}
+                        <div className={`text-[11px] font-medium px-2 py-0.5 rounded ${
+                          isFullyBooked 
+                            ? 'bg-red-50 text-red-700 border border-red-200' 
+                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        }`}>
+                          {isFullyBooked ? (
+                            lang === 'id' ? 'Kamar Penuh' : 'Sold Out'
+                          ) : (
+                            `${avail.availableCount}/${avail.totalCount} ${lang === 'id' ? 'Tersedia' : 'Free'}`
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <button
+                        id={`view-detail-btn-${room.id}`}
+                        onClick={() => onSelectRoom(room)}
+                        className="w-full bg-brand-100 hover:bg-brand-200 text-brand-950 font-semibold py-3 px-4 rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all border border-brand-200 cursor-pointer"
+                      >
+                        <Eye className="w-4 h-4 text-brand-600" />
+                        <span>{t.viewDetail}</span>
+                      </button>
+
+                      {isFullyBooked ? (
+                        <button
+                          id={`book-room-btn-${room.id}`}
+                          disabled
+                          title={lang === 'id' ? 'Kamar ini sudah terpesan penuh untuk saat ini' : 'This room is currently fully booked'}
+                          className="w-full bg-stone-300 text-stone-500 font-bold py-3 px-4 rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 border border-stone-300 cursor-not-allowed shadow-none select-none transition-none"
+                        >
+                          <Ban className="w-4 h-4 text-stone-400" />
+                          <span>{lang === 'id' ? 'Terpesan (Penuh)' : 'Fully Booked'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          id={`book-room-btn-${room.id}`}
+                          onClick={() => onBookRoom(room.id)}
+                          className="w-full bg-brand-700 hover:bg-brand-850 text-white font-bold py-3 px-4 rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-brand-300" />
+                          <span>{t.bookNow}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
