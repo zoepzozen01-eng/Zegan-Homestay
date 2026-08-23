@@ -89,6 +89,16 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   const [pendingSignalsCount, setPendingSignalsCount] = useState(0);
   const [newSignalToast, setNewSignalToast] = useState<{ guestName: string; details: string; roomNumber: string } | null>(null);
 
+  // Cancel / Reject booking modal state
+  const [cancelModalBooking, setCancelModalBooking] = useState<{
+    bookingCode: string;
+    guestName?: string;
+    roomName?: string;
+    roomNumber?: string;
+    totalPrice?: number;
+  } | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+
   useEffect(() => {
     const checkSignals = () => {
       try {
@@ -246,8 +256,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         const mappedBookings: Booking[] = data.map((b: any) => {
           const guestObj = b.guests;
           const guest = Array.isArray(guestObj) ? guestObj[0] : guestObj;
-          const roomObj = roomsList.find(r => r.id === b.room_id);
+          let roomObj = roomsList.find(r => r.id === b.room_id);
           
+          if (!roomObj && b.room_id) {
+            roomObj = roomsList.find(r => r.room_type_id === b.room_id);
+          }
+
           return {
             booking_code: b.booking_code,
             room_id: b.room_id,
@@ -267,8 +281,28 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           };
         });
 
-        setBookings(mappedBookings);
-        localStorage.setItem('zegan_bookings', JSON.stringify(mappedBookings));
+        // Smart merge: keep all DB bookings and retain any local bookings not yet in DB
+        const rawLocal = localStorage.getItem('zegan_bookings');
+        const localList: Booking[] = rawLocal ? JSON.parse(rawLocal) : [];
+        const dbCodes = new Set(mappedBookings.map(b => b.booking_code));
+        const mergedBookings = [
+          ...mappedBookings,
+          ...localList.filter(b => !dbCodes.has(b.booking_code))
+        ];
+
+        // Ensure every booking has assigned room_number if resolvable
+        const resolvedBookings = mergedBookings.map(b => {
+          if (!b.room_number) {
+            const foundRoom = roomsList.find(r => r.id === b.room_id || r.room_type_id === b.room_id);
+            if (foundRoom) {
+              return { ...b, room_number: foundRoom.number, room_name: foundRoom.type };
+            }
+          }
+          return b;
+        });
+
+        setBookings(resolvedBookings);
+        localStorage.setItem('zegan_bookings', JSON.stringify(resolvedBookings));
       }
     } catch (err) {
       console.error('Error in fetchDbBookings:', err);
@@ -512,28 +546,109 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     fetchDbRooms();
   };
 
-  // Admin Actions: Konfirmasi Lunas
-  const handleConfirmPaid = (bookingCode: string) => {
+  // Helper to accurately resolve physical room object for a booking
+  const getPhysicalRoomForBooking = (b: Booking, currentRooms: typeof dbRooms = dbRooms) => {
+    // 1. Direct match by room number
+    if (b.room_number) {
+      const match = currentRooms.find(r => r.number === b.room_number);
+      if (match) return match;
+    }
+    // 2. Direct match by room ID
+    if (b.room_id) {
+      const match = currentRooms.find(r => r.id === b.room_id);
+      if (match) return match;
+    }
+    // 3. Fallback match by room name keywords
+    const nameLower = (b.room_name || '').toLowerCase();
+    if (nameLower.includes('utama')) {
+      return currentRooms.find(r => r.number === '1') || currentRooms.find(r => r.number === '2');
+    }
+    if (nameLower.includes('madya')) {
+      return currentRooms.find(r => r.number === '4');
+    }
+    if (nameLower.includes('pratama')) {
+      return currentRooms.find(r => r.number === '3') || currentRooms.find(r => r.number === '5');
+    }
+    if (nameLower.includes('family')) {
+      return currentRooms.find(r => r.number === '6');
+    }
+    if (nameLower.includes('ekonomi') || nameLower.includes('economy')) {
+      return currentRooms.find(r => r.number === '7') || currentRooms.find(r => r.number === '8');
+    }
+    if (nameLower.includes('rumah')) {
+      return currentRooms.find(r => r.number === 'Rumah-1');
+    }
+    if (nameLower.includes('standard')) {
+      return currentRooms.find(r => r.number === '1') || currentRooms.find(r => r.number === '3');
+    }
+    return currentRooms.length > 0 ? currentRooms[0] : null;
+  };
+
+  // Admin Actions: Konfirmasi Lunas & Otomatisasi Penyesuaian Status Kamar (Booked)
+  const handleConfirmPaid = async (bookingCode: string) => {
     try {
+      const targetBooking = bookings.find(b => b.booking_code === bookingCode);
+      if (!targetBooking) return;
+
+      const targetRoom = getPhysicalRoomForBooking(targetBooking, dbRooms);
+      const assignedRoomNumber = targetRoom ? targetRoom.number : (targetBooking.room_number || '1');
+      const assignedRoomId = targetRoom ? targetRoom.id : targetBooking.room_id;
+      const todayStr = new Date().toISOString().substring(0, 10);
+      const isBookingActiveToday = todayStr >= targetBooking.check_in && todayStr < targetBooking.check_out;
+      const checkoutTime = targetBooking.check_out ? `${targetBooking.check_out} 12:00:00` : null;
+
+      // 1. Update in Supabase bookings table
+      try {
+        await supabase
+          .from('bookings')
+          .update({
+            booking_status: 'Paid',
+            payment_status: 'Paid',
+            payment_date: new Date().toISOString(),
+            room_id: assignedRoomId
+          })
+          .eq('booking_code', bookingCode);
+      } catch (errSb) {
+        console.warn('Supabase confirm paid update failed:', errSb);
+      }
+
+      // 2. If booking includes today, update physical room in Supabase rooms table to 'Booked'
+      if (isBookingActiveToday && targetRoom && targetRoom.id) {
+        try {
+          await supabase
+            .from('rooms')
+            .update({
+              status: 'Booked',
+              occupied_until: checkoutTime
+            })
+            .eq('id', targetRoom.id);
+        } catch (errRoom) {
+          console.warn('Supabase room status update on confirm paid failed:', errRoom);
+        }
+      }
+
+      // 3. Update local bookings state
       const updated = bookings.map(b => {
         if (b.booking_code === bookingCode) {
           const paidBooking: Booking = {
             ...b,
             status: 'Paid',
             payment_status: 'Paid',
-            payment_date: new Date().toISOString()
+            payment_date: new Date().toISOString(),
+            room_number: assignedRoomNumber,
+            room_id: assignedRoomId
           };
 
           // Trigger simulated email automatically
           const subject = `Bukti Reservasi Terkonfirmasi LUNAS - ${bookingCode}`;
-          const body = `Halo ${b.full_name},\n\nPembayaran Anda untuk pesanan ${bookingCode} di Zegan Homestay telah berhasil diverifikasi dan terkonfirmasi LUNAS.\n\nDetail Kamar: ${b.room_name || 'Kamar Zegan'}\nCheck-in: ${b.check_in}\nCheck-out: ${b.check_out}\n\nTerlampir adalah Invoice PDF Resmi Anda. Kami menantikan kehadiran Anda!\n\nSalam,\nZegan Homestay & Cafe`;
+          const body = `Halo ${b.full_name},\n\nPembayaran Anda untuk pesanan ${bookingCode} di Zegan Homestay telah berhasil diverifikasi dan terkonfirmasi LUNAS.\n\nDetail Kamar: ${b.room_name || 'Kamar Zegan'} (No. ${assignedRoomNumber})\nCheck-in: ${b.check_in}\nCheck-out: ${b.check_out}\n\nTerlampir adalah Invoice PDF Resmi Anda. Kami menantikan kehadiran Anda!\n\nSalam,\nZegan Homestay & Cafe`;
           logSimulatedEmail(b.email, subject, body, `Invoice-${bookingCode}.pdf`);
 
-          // Log WhatsApp simulation
+          // Log Activity
           logActivity(
             adminName,
             currentRole,
-            `Konfirmasi LUNAS untuk booking ${bookingCode}. WhatsApp & Email invoice dikirim secara otomatis.`
+            `Konfirmasi LUNAS untuk booking ${bookingCode} (Tamu: ${b.full_name}, Kamar No. ${assignedRoomNumber}). Status kamar otomatis DISESUAIKAN menjadi TERPESAN (Booked).`
           );
 
           return paidBooking;
@@ -541,17 +656,58 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      // 4. Update local dbRooms state if active today
+      if (isBookingActiveToday && targetRoom) {
+        setDbRooms(prev => prev.map(r => {
+          if (r.id === targetRoom.id || r.number === targetRoom.number) {
+            return {
+              ...r,
+              status: 'Booked',
+              occupied_until: checkoutTime
+            };
+          }
+          return r;
+        }));
+      }
+
+      setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
+
+      // 5. Update calendar active modal if open
+      setSelectedCalendarRoom((prev: any) => {
+        if (!prev) return null;
+        const updatedRoom = targetRoom ? { ...prev.room, status: 'Booked', occupied_until: checkoutTime } : prev.room;
+        return {
+          ...prev,
+          room: updatedRoom,
+          statusInfo: getRoomColorStatus(updatedRoom),
+          activeBooking: {
+            ...prev.activeBooking,
+            status: 'Paid',
+            payment_status: 'Paid',
+            room_number: assignedRoomNumber
+          }
+        };
+      });
+
       refreshWorkspace();
-      alert(lang === 'id' ? 'Pembayaran berhasil dikonfirmasi!' : 'Payment successfully confirmed!');
     } catch (err) {
-      console.error(err);
+      console.error('Error confirming payment:', err);
     }
   };
 
   // Admin Actions: Check In
-  const handleConfirmCheckIn = (bookingCode: string) => {
+  const handleConfirmCheckIn = async (bookingCode: string) => {
     try {
+      try {
+        await supabase
+          .from('bookings')
+          .update({ booking_status: 'CheckedIn' })
+          .eq('booking_code', bookingCode);
+      } catch (errSb) {
+        console.warn('Supabase checkin update failed:', errSb);
+      }
+
       const updated = bookings.map(b => {
         if (b.booking_code === bookingCode) {
           logActivity(
@@ -567,17 +723,29 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
       refreshWorkspace();
-      alert(lang === 'id' ? 'Check-in tamu berhasil dikonfirmasi!' : 'Guest check-in successfully confirmed!');
     } catch (err) {
       console.error(err);
     }
   };
 
   // Admin Actions: Check Out
-  const handleConfirmCheckOut = (bookingCode: string) => {
+  const handleConfirmCheckOut = async (bookingCode: string) => {
     try {
+      try {
+        await supabase
+          .from('bookings')
+          .update({ 
+            booking_status: 'Completed',
+            check_out_date: new Date().toISOString()
+          })
+          .eq('booking_code', bookingCode);
+      } catch (errSb) {
+        console.warn('Supabase checkout update failed:', errSb);
+      }
+
       const updated = bookings.map(b => {
         if (b.booking_code === bookingCode) {
           logActivity(
@@ -594,24 +762,52 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
       refreshWorkspace();
-      alert(lang === 'id' ? 'Check-out tamu berhasil diselesaikan!' : 'Guest check-out completed successfully!');
     } catch (err) {
       console.error(err);
     }
   };
 
-  // Admin Actions: Cancel
+  // Admin Actions: Open Cancel/Reject Modal
   const handleCancelBooking = (bookingCode: string) => {
-    if (!window.confirm(lang === 'id' ? 'Yakin ingin membatalkan booking ini?' : 'Are you sure you want to cancel this booking?')) return;
+    const booking = bookings.find(b => b.booking_code === bookingCode);
+    setCancelModalBooking({
+      bookingCode,
+      guestName: booking?.full_name || 'Tamu',
+      roomName: booking?.room_name || 'Unit Kamar',
+      roomNumber: booking?.room_number || '',
+      totalPrice: booking?.total_price || 0
+    });
+  };
+
+  // Execute Cancel/Reject Booking
+  const handleExecuteCancelBooking = async () => {
+    if (!cancelModalBooking) return;
+    const { bookingCode } = cancelModalBooking;
+    setIsCancelling(true);
     try {
+      // 1. Update in Supabase if available
+      try {
+        await supabase
+          .from('bookings')
+          .update({
+            booking_status: 'Cancelled',
+            payment_status: 'Expired'
+          })
+          .eq('booking_code', bookingCode);
+      } catch (errSb) {
+        console.warn('Supabase cancel booking update failed:', errSb);
+      }
+
+      // 2. Update local state
       const updated = bookings.map(b => {
         if (b.booking_code === bookingCode) {
           logActivity(
             adminName,
             currentRole,
-            `Pemesanan dengan kode ${bookingCode} dibatalkan oleh admin.`
+            `Pemesanan dengan kode ${bookingCode} ditolak/dibatalkan oleh admin.`
           );
           return {
             ...b,
@@ -622,11 +818,17 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         return b;
       });
 
+      setBookings(updated);
       localStorage.setItem('zegan_bookings', JSON.stringify(updated));
+
+      // Close room details popup if open
+      setSelectedCalendarRoom(null);
+      setCancelModalBooking(null);
       refreshWorkspace();
-      alert(lang === 'id' ? 'Booking berhasil dibatalkan.' : 'Booking successfully cancelled.');
     } catch (err) {
-      console.error(err);
+      console.error('Error cancelling booking:', err);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -750,9 +952,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     const directBooking = bookings.find(b => {
       if (b.status === 'Cancelled' || b.status === 'Expired') return false;
       
+      const assignedRoom = getPhysicalRoomForBooking(b, dbRooms);
       const isMyRoom = (roomObj && b.room_id === roomObj.id) || 
                        b.room_number === roomNumber || 
-                       (!b.room_number && roomNumber === '1');
+                       (assignedRoom && assignedRoom.number === roomNumber) ||
+                       (!b.room_number && !assignedRoom && roomNumber === '1');
                         
       const isDateInRange = todayStr >= b.check_in && todayStr < b.check_out;
       return isMyRoom && isDateInRange;
@@ -828,10 +1032,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       };
     }
 
-    // 2. KUNING (Booked) — ada booking di tabel bookings untuk kamar ini, dengan booking_status "Pending" atau "Confirmed" (belum "CheckedIn"), dan tanggal hari ini ada di antara check_in dan check_out.
+    // 2. KUNING (Booked) — ada booking di tabel bookings untuk kamar ini, dengan booking_status "Pending" atau "Confirmed" atau "Paid" (belum "CheckedIn"), dan tanggal hari ini ada di antara check_in dan check_out.
     if (activeBooking) {
       const bStatus = String(activeBooking.status).toLowerCase().replace(/[\s-_]/g, '');
-      if (bStatus === 'pending' || bStatus === 'confirmed' || bStatus === 'paid') {
+      const pStatus = String(activeBooking.payment_status || '').toLowerCase().replace(/[\s-_]/g, '');
+      if (bStatus === 'pending' || bStatus === 'confirmed' || bStatus === 'paid' || pStatus === 'paid') {
         return { 
           status: 'Booked', 
           color: 'bg-amber-500 text-amber-950 ring-amber-600', 
@@ -856,9 +1061,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     const directBooking = bookings.find(b => {
       if (b.status === 'Cancelled' || b.status === 'Expired') return false;
       
+      const assignedRoom = getPhysicalRoomForBooking(b, dbRooms);
       const isMyRoom = (roomObj && b.room_id === roomObj.id) || 
                        b.room_number === roomNumber || 
-                       (!b.room_number && roomNumber === '1');
+                       (assignedRoom && assignedRoom.number === roomNumber) ||
+                       (!b.room_number && !assignedRoom && roomNumber === '1');
                         
       const isDateInRange = dateStr >= b.check_in && dateStr < b.check_out;
       return isMyRoom && isDateInRange;
@@ -921,6 +1128,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
     
     if (activeBooking) {
       const bStatus = String(activeBooking.status).toLowerCase().replace(/[\s-_]/g, '');
+      const pStatus = String(activeBooking.payment_status || '').toLowerCase().replace(/[\s-_]/g, '');
       if (bStatus === 'checkedin' || bStatus === 'occupied') {
         return { 
           status: 'Occupied', 
@@ -928,7 +1136,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           label: lang === 'id' ? 'Terisi (Occupied)' : 'Occupied' 
         };
       }
-      if (bStatus === 'pending' || bStatus === 'confirmed' || bStatus === 'paid') {
+      if (bStatus === 'pending' || bStatus === 'confirmed' || bStatus === 'paid' || pStatus === 'paid') {
         return { 
           status: 'Booked', 
           color: 'bg-amber-500 text-amber-950 ring-amber-600', 
@@ -1266,9 +1474,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                   const isLoading = !!loadingRooms[room.id];
 
                   return (
-                    <motion.button
+                    <motion.div
                       whileHover={isLoading ? {} : { scale: 1.02 }}
                       key={room.number}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         if (statusInfo.status === 'Booked' && activeBooking) {
                           handleCheckInBooking(room, activeBooking);
@@ -1276,8 +1486,16 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                           handleManualStatusToggle(room);
                         }
                       }}
-                      disabled={isLoading}
-                      className={`h-40 rounded-2xl p-4 text-left border flex flex-col justify-between shadow-xs cursor-pointer transition-all ring-1 ${statusInfo.color} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          if (statusInfo.status === 'Booked' && activeBooking) {
+                            handleCheckInBooking(room, activeBooking);
+                          } else if (statusInfo.status === 'Available' || (statusInfo.status === 'Occupied' && !activeBooking)) {
+                            handleManualStatusToggle(room);
+                          }
+                        }
+                      }}
+                      className={`h-40 rounded-2xl p-4 text-left border flex flex-col justify-between shadow-xs cursor-pointer transition-all ring-1 select-none ${statusInfo.color} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
                     >
                       <div>
                         <div className="flex justify-between items-start">
@@ -1340,7 +1558,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                           </span>
                         )}
                       </div>
-                    </motion.button>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -1707,9 +1925,11 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                     const isLoading = !!loadingRooms[room.id];
 
                     return (
-                      <motion.button
+                      <motion.div
                         whileHover={isLoading ? {} : { scale: 1.03 }}
                         key={room.number}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           if (statusInfo.status === 'Booked' && activeBooking) {
                             handleCheckInBooking(room, activeBooking);
@@ -1717,8 +1937,16 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             handleManualStatusToggle(room);
                           }
                         }}
-                        disabled={isLoading}
-                        className={`h-44 rounded-2xl p-5 text-left border flex flex-col justify-between shadow-sm cursor-pointer transition-all ring-1 ${statusInfo.color} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            if (statusInfo.status === 'Booked' && activeBooking) {
+                              handleCheckInBooking(room, activeBooking);
+                            } else if (statusInfo.status === 'Available' || (statusInfo.status === 'Occupied' && !activeBooking)) {
+                              handleManualStatusToggle(room);
+                            }
+                          }
+                        }}
+                        className={`h-44 rounded-2xl p-5 text-left border flex flex-col justify-between shadow-sm cursor-pointer transition-all ring-1 select-none ${statusInfo.color} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
                       >
                         <div>
                           <div className="flex justify-between items-start">
@@ -1783,7 +2011,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             </span>
                           )}
                         </div>
-                      </motion.button>
+                      </motion.div>
                     );
                   })}
                 </div>
@@ -2337,14 +2565,12 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                 </div>
                 <button 
                   onClick={() => {
-                    if (window.confirm('Hapus seluruh riwayat log audit?')) {
-                      localStorage.removeItem('zegan_activity_logs');
-                      setLogs([]);
-                    }
+                    localStorage.removeItem('zegan_activity_logs');
+                    setLogs([]);
                   }}
-                  className="w-full py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-lg text-xs font-bold transition-all"
+                  className="w-full py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-lg text-xs font-bold transition-all cursor-pointer"
                 >
-                  Clear Logs
+                  Bersihkan Riwayat Log (Clear)
                 </button>
               </div>
             </div>
@@ -2765,6 +2991,86 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           lang={lang}
         />
       )}
+
+      {/* Confirmation Modal for Tolak / Batalkan Booking */}
+      <AnimatePresence>
+        {cancelModalBooking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-red-100 space-y-5"
+            >
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-100 text-red-600 rounded-2xl shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-serif font-bold text-stone-900">
+                    {lang === 'id' ? 'Konfirmasi Tolak / Batalkan' : 'Confirm Reject / Cancel'}
+                  </h3>
+                  <p className="text-xs text-stone-500 mt-1">
+                    {lang === 'id' 
+                      ? 'Apakah Anda yakin ingin membatalkan dan menolak pesanan ini?' 
+                      : 'Are you sure you want to cancel and reject this booking?'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-stone-400">Kode Booking:</span>
+                  <span className="font-mono font-bold text-brand-900">{cancelModalBooking.bookingCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400">Nama Tamu:</span>
+                  <span className="font-bold text-stone-800">{cancelModalBooking.guestName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400">Kamar:</span>
+                  <span className="font-semibold text-stone-800">{cancelModalBooking.roomName} {cancelModalBooking.roomNumber ? `(${cancelModalBooking.roomNumber})` : ''}</span>
+                </div>
+                {cancelModalBooking.totalPrice !== undefined && cancelModalBooking.totalPrice > 0 && (
+                  <div className="flex justify-between border-t border-stone-200/60 pt-1.5 mt-1.5">
+                    <span className="text-stone-400">Total Tagihan:</span>
+                    <span className="font-mono font-bold text-stone-900">Rp{cancelModalBooking.totalPrice.toLocaleString('id-ID')}</span>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[11px] text-red-600 bg-red-50/70 border border-red-200/60 p-3 rounded-xl">
+                ⚠️ {lang === 'id' 
+                  ? 'Status reservasi akan diubah menjadi Dibatalkan (Cancelled) dan ketersediaan kamar akan dibebaskan kembali.' 
+                  : 'Booking status will be set to Cancelled and room availability will be released.'}
+              </p>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCancelModalBooking(null)}
+                  disabled={isCancelling}
+                  className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  {lang === 'id' ? 'Batal / Kembali' : 'Go Back'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteCancelBooking}
+                  disabled={isCancelling}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isCancelling ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <span>{lang === 'id' ? 'Ya, Tolak Booking' : 'Yes, Cancel'}</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Toast Notification for Real-Time Service Signals & Cafe Orders */}
       <AnimatePresence>
