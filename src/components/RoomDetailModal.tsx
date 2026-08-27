@@ -44,29 +44,29 @@ export default function RoomDetailModal({ room, isOpen, onClose, lang, onBookNow
   const getAmenityDetails = (amenity: string) => {
     switch (amenity) {
       case 'wifi':
-        return { label: lang === 'id' ? 'Free WiFi' : 'Free WiFi', icon: Wifi };
+        return { label: lang === 'id' ? 'Free High-Speed WiFi' : 'Free High-Speed WiFi', icon: Wifi };
       case 'ac':
         return { label: lang === 'id' ? 'AC Pendingin' : 'Air Conditioning', icon: Wind };
-      case 'tv':
-        return { label: lang === 'id' ? 'Smart TV' : 'Smart TV', icon: Tv };
+      case 'private-bathroom':
+        return { label: lang === 'id' ? 'Kamar Mandi Dalam (En-suite)' : 'Private En-suite Bathroom', icon: CheckCircle2 };
       case 'shower':
-        return { label: lang === 'id' ? 'Shower Air Hangat' : 'Hot Shower', icon: CheckCircle2 };
+        return { label: lang === 'id' ? 'Shower Air Bersih' : 'Shower', icon: CheckCircle2 };
       case 'coffee-maker':
         return { label: lang === 'id' ? 'Pembuat Kopi & Teh' : 'Coffee/Tea Maker', icon: Coffee };
       case 'fridge':
         return { label: lang === 'id' ? 'Kulkas Mini' : 'Mini Fridge', icon: Sparkles };
       case 'garden-view':
-        return { label: lang === 'id' ? 'Pemandangan Taman' : 'Garden View', icon: Eye };
+        return { label: lang === 'id' ? 'Pemandangan Asri' : 'Garden / Nature View', icon: Eye };
       case 'pool-view':
         return { label: lang === 'id' ? 'Pemandangan Kolam' : 'Pool View', icon: Eye };
       case 'bathtub':
-        return { label: lang === 'id' ? 'Bathub Outdoor' : 'Outdoor Bathtub', icon: Sparkles };
+        return { label: lang === 'id' ? 'Bathtub' : 'Bathtub', icon: Sparkles };
       case 'private-patio':
-        return { label: lang === 'id' ? 'Teras Pribadi' : 'Private Patio', icon: HomeIcon };
+        return { label: lang === 'id' ? 'Teras Santai' : 'Patio / Balcony', icon: HomeIcon };
       case 'premium-linens':
         return { label: lang === 'id' ? 'Sprei Katun Premium' : 'Premium Linens', icon: Heart };
       default:
-        return { label: amenity, icon: CheckCircle2 };
+        return null;
     }
   };
 
@@ -187,6 +187,7 @@ export default function RoomDetailModal({ room, isOpen, onClose, lang, onBookNow
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {room.amenities.map((amenity) => {
                     const detail = getAmenityDetails(amenity);
+                    if (!detail) return null;
                     const IconComponent = detail.icon;
                     return (
                       <div

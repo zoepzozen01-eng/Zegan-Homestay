@@ -112,7 +112,7 @@ export default function Hero({
       }}
     >
       {/* Background Dimming & Texture */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-brand-950/80" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/65 to-black/90" />
       
       {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center pt-8 pb-20">
@@ -120,11 +120,12 @@ export default function Hero({
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="flex justify-center mb-4"
+          className="flex flex-col items-center justify-center mb-5 gap-2"
         >
-          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-brand-800/90 backdrop-blur-xs text-brand-100 text-xs font-semibold tracking-wider uppercase border border-brand-300/30">
-            <Compass className="w-3.5 h-3.5 animate-spin-slow text-brand-300" />
-            <span>KULON PROGO • YOGYAKARTA</span>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold tracking-widest uppercase border border-white/20 shadow-lg">
+            <span className="text-white/80">✦</span>
+            <span>KULON PROGO • DAERAH ISTIMEWA YOGYAKARTA</span>
+            <span className="text-white/80">✦</span>
           </div>
         </motion.div>
 
@@ -132,22 +133,29 @@ export default function Hero({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-4xl sm:text-5xl md:text-6xl font-serif font-normal text-white mb-6 tracking-tight leading-tight max-w-4xl mx-auto"
+          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif font-black text-white mb-6 tracking-tight leading-tight max-w-5xl mx-auto drop-shadow-2xl"
         >
-          {t.heroTitle === 'Zegan : Homestay & Cafe' ? (
-            <>
-              Zegan : <span className="italic font-light text-brand-200">Homestay & Cafe</span>
-            </>
-          ) : (
-            t.heroTitle
-          )}
+          <span className="block text-xl sm:text-2xl md:text-3xl font-serif font-normal tracking-[0.2em] text-stone-200 uppercase mb-2">
+            {lang === 'id' ? 'Penginapan Tradisional Jawa' : 'Traditional Javanese Heritage'}
+          </span>
+          <span className="text-white tracking-wider font-black">
+            ZEGAN
+          </span>{' '}
+          <span className="font-light italic text-stone-100">
+            Homestay &amp; Cafe
+          </span>
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <div className="h-px w-16 sm:w-28 bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
+            <span className="text-white/80 text-xs sm:text-sm tracking-widest">✦ ❖ ✦</span>
+            <div className="h-px w-16 sm:w-28 bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
+          </div>
         </motion.h1>
 
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1, delay: 0.4 }}
-          className="text-stone-100 text-sm sm:text-base md:text-lg mb-10 max-w-2xl mx-auto font-light leading-relaxed tracking-wide"
+          className="text-stone-200 text-sm sm:text-base md:text-lg mb-10 max-w-2xl mx-auto font-normal leading-relaxed tracking-wide drop-shadow-md"
         >
           {t.heroSubtitle}
         </motion.p>

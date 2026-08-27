@@ -29,6 +29,7 @@ export async function sendAdminNotification(booking: Booking, roomType: string):
 
   // Format price
   const formattedPrice = new Intl.NumberFormat('id-ID').format(booking.total_price);
+  const uniqueCodeStr = booking.unique_code ? ` (Kode Unik 3 Digit: ${booking.unique_code})` : '';
 
   // Format dates with Indonesian day names and hours nicely
   const formatDateWithTime = (dateStr: string, timeStr?: string) => {
@@ -85,7 +86,7 @@ Jumlah Tamu :
 ${booking.guests} orang (Kapasitas: ${booking.guests + (booking.extra_beds || 0)} orang)
 ${extraBedLine}
 Total Pembayaran :
-Rp ${formattedPrice}
+Rp ${formattedPrice}${uniqueCodeStr}
 
 Silakan menunggu konfirmasi pembayaran dari customer.`;
 

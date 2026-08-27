@@ -1,6 +1,6 @@
 {
-  "name": "Zegan Homestay",
-  "description": "Zegan Homestay - Nikmati Liburan Tenang, Nyaman, dan Penuh Keakraban di Kulon Progo, Yogyakarta dengan fasilitas kolam renang, cafe, dan suasana pedesaan yang asri.",
+  "name": "Zegan Homestay & Cafe",
+  "description": "Zegan Homestay & Cafe - Penginapan Nuansa Tradisional Jawa yang Asri, Tenang, dan Nyaman di Kulon Progo, Yogyakarta.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

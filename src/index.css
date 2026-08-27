@@ -1,9 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Poppins", sans-serif;
   --font-serif: "Playfair Display", serif;
+  --font-display: "Cinzel", serif;
   
   --color-brand-50: #fbfaf8;
   --color-brand-100: #f5f2ed;
@@ -28,6 +29,10 @@ body {
 
 .font-serif {
   font-family: var(--font-serif);
+}
+
+.font-display {
+  font-family: "Cinzel", "Playfair Display", serif;
 }
 
 /* Custom scrollbar for an elegant feel */

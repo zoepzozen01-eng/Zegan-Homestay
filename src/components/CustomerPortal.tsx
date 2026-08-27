@@ -5,6 +5,7 @@ import { Booking, BookingStatus, PaymentStatus, ServiceSignal } from '../types';
 import { getQrisSettings, getWhatsappSettings, logActivity, getDynamicQrisImageUrl } from '../services/adminService';
 import { CAFE_ITEMS } from '../data';
 import InvoicePDF from './InvoicePDF';
+import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
 
 interface CustomerPortalProps {
   lang: 'id' | 'en';

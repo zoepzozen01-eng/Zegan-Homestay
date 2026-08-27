@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, Users, Coffee, Bike, Car, Sparkles, CheckCircle2, 
   HelpCircle, Receipt, Percent, Tag, MessageSquare, Compass, Info,
-  Upload, Camera, Loader2, Ban, AlertTriangle, Bed, Clock, Plus, Minus
+  Upload, Camera, Loader2, Ban, AlertTriangle, Bed, Clock, Plus, Minus,
+  Copy, Check, QrCode, Wallet, Download, ChevronDown, ChevronUp, ShieldCheck
 } from 'lucide-react';
 import { Language, Room, AddOn } from '../types';
 import { ROOMS, ADD_ONS, TRANSLATIONS } from '../data';
@@ -43,21 +44,21 @@ const getRoomImage = (name: string): string => {
 
 const getRoomMetaByName = (name: string) => {
   const norm = name.toLowerCase().trim();
-  if (norm.includes('economy') || norm.includes('ekonomi')) {
+  if (norm.includes('economy') || norm.includes('ekonomi') || norm.includes('economis')) {
     return {
       size: '12 m²',
-      bedType: { id: '1 Kasur Single', en: '1 Single Bed' },
-      amenities: ['wifi', 'garden-view'],
+      bedType: { id: '1 Kasur (Tersedia 2 Unit: No. 7 & 8)', en: '1 Bed (2 Units Available: No. 7 & 8)' },
+      amenities: ['wifi', 'ac'],
       rating: 4.6,
-      capacity: 1
+      capacity: 2
     };
   }
-  if (norm.includes('pratama') || norm.includes('standard room') && !norm.includes('madya') && !norm.includes('utama')) {
+  if (norm.includes('utama')) {
     return {
-      size: '16 m²',
+      size: '20 m²',
       bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
-      rating: 4.7,
+      amenities: ['wifi', 'ac', 'private-bathroom'],
+      rating: 4.9,
       capacity: 2
     };
   }
@@ -65,34 +66,34 @@ const getRoomMetaByName = (name: string) => {
     return {
       size: '18 m²',
       bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
+      amenities: ['wifi', 'ac'],
       rating: 4.8,
+      capacity: 2
+    };
+  }
+  if (norm.includes('pratama') || (norm.includes('standard') && !norm.includes('madya') && !norm.includes('utama'))) {
+    return {
+      size: '16 m²',
+      bedType: { id: 'Double Bed / Twin Bed', en: 'Double Bed / Twin Bed' },
+      amenities: ['wifi', 'ac'],
+      rating: 4.7,
       capacity: 2
     };
   }
   if (norm.includes('family')) {
     return {
       size: '28 m²',
-      bedType: { id: '1 Kasur Double & 1 Kasur Single', en: '1 Double Bed & 1 Single Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view', 'fridge'],
+      bedType: { id: '2 Kasur Double (Duo Double Bed)', en: '2 Double Beds' },
+      amenities: ['wifi', 'ac'],
       rating: 4.9,
-      capacity: 3
-    };
-  }
-  if (norm.includes('utama')) {
-    return {
-      size: '20 m²',
-      bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
-      rating: 4.9,
-      capacity: 2
+      capacity: 4
     };
   }
   if (norm.includes('rumah')) {
     return {
       size: '45 m²',
       bedType: { id: '2 Kasur Double', en: '2 Double Beds' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view', 'fridge'],
+      amenities: ['wifi', 'ac', 'shower', 'garden-view', 'fridge'],
       rating: 5.0,
       capacity: 6
     };
@@ -100,7 +101,7 @@ const getRoomMetaByName = (name: string) => {
   return {
     size: '16 m²',
     bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
+    amenities: ['wifi', 'ac'],
     rating: 4.8,
     capacity: 2
   };
@@ -297,11 +298,31 @@ export default function BookingForm({
   const [activeDiscount, setActiveDiscount] = useState<{ code: string; percent: number } | null>(null);
   const [couponError, setCouponError] = useState('');
 
+  // Unique 2 or 3-digit verification code synchronized with booking code & month
+  // e.g. Kode: 08 (Bulan Agt) + 42 (Urutan Unik) => Kode Booking: ZGN-0842 & Digit Transfer: 842
+  const [uniqueCode, setUniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isPaidConfirmed, setIsPaidConfirmed] = useState(false);
+  const [showOptionalUpload, setShowOptionalUpload] = useState(false);
+
+  const handleCopy = (text: string, fieldId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldId);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
+  // Generate synchronized booking code based on year, month and unique code
+  // Format: ZGN-YYYY-MM-XXX (Contoh: ZGN-2026-08-314 di mana 314 adalah kode unik transfernya)
+  const now = new Date();
+  const currentYearStr = now.getFullYear();
+  const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
+  const currentBookingCode = `ZGN-${currentYearStr}-${currentMonthStr}-${uniqueCode}`;
+
   // Booking result modal
   const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [generatedCode, setGeneratedCode] = useState('');
+  const [generatedCode, setGeneratedCode] = useState(currentBookingCode);
 
-  // States for file uploads
+  // States for file uploads (Optional)
   const [ktpPhoto, setKtpPhoto] = useState<File | null>(null);
   const [paymentProof, setPaymentProof] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -310,10 +331,14 @@ export default function BookingForm({
 
   const handleCloseSuccess = () => {
     setBookingSuccess(false);
+    setIsPaidConfirmed(false);
+    setShowOptionalUpload(false);
     setKtpPhoto(null);
     setPaymentProof(null);
     setPhotosUploaded(false);
     setUploadError(null);
+    // Refresh unique code for next booking
+    setUniqueCode(Math.floor(100 + Math.random() * 900));
   };
 
   // Fetch rooms from room_types in Supabase
@@ -345,12 +370,13 @@ export default function BookingForm({
           const mapped: DBExtendedRoom[] = data.map((row: any) => {
             const meta = getRoomMetaByName(row.name);
             const image = getRoomImage(row.name);
+            const matchingStatic = ROOMS.find(r => r.name.toLowerCase().trim() === String(row.name).toLowerCase().trim());
             return {
               id: String(row.id),
               name: row.name,
               price: Number(row.weekday_price),
               weekend_price: Number(row.weekend_price),
-              description: {
+              description: matchingStatic ? matchingStatic.description : {
                 id: row.description || '',
                 en: row.description || ''
               },
@@ -444,8 +470,13 @@ export default function BookingForm({
   // Discount math
   const discountAmount = activeDiscount ? (subtotal * activeDiscount.percent) / 100 : 0;
   const taxableAmount = subtotal - discountAmount;
-  const taxAmount = taxableAmount * 0.10; // 10% VAT
-  const finalTotal = taxableAmount + taxAmount;
+  const taxAmount = Math.round(taxableAmount * 0.10); // 10% VAT
+  const standardTotal = Math.round(taxableAmount + taxAmount);
+
+  // User formula: "buat hargany jangan di lebihi tapi kurang 1000 dan di tambah angka unik"
+  // Example: Rp 350.000 - 1.000 + 482 = Rp 349.482 (Memberikan potongan Rp 518)
+  const uniqueCodeDiscount = Math.max(0, 1000 - uniqueCode);
+  const finalTotal = Math.max(0, standardTotal - 1000 + uniqueCode);
 
   // Coupon apply
   const handleApplyCoupon = (e: React.FormEvent) => {
@@ -481,8 +512,9 @@ export default function BookingForm({
     setIsSubmitting(true);
     setSubmitError(null);
     
-    // Generate simple random booking code ZG-XXXXX
-    const code = 'ZG-' + Math.floor(10000 + Math.random() * 90000);
+    // Generate synchronized booking code: ZGN-YYYY-MM-XXX (e.g. ZGN-2026-08-314)
+    // YYYY = Tahun, MM = Bulan berjalan, XXX = 3 Digit Kode Unik Transfer (100-999)
+    const code = currentBookingCode;
     setGeneratedCode(code);
 
     // 0. Check bookings availability using centralized roomAvailability engine
@@ -600,6 +632,7 @@ export default function BookingForm({
       email: email,
       phone: phone,
       total_price: finalTotal,
+      unique_code: uniqueCode,
       status: 'Pending' as any,
       payment_status: 'Pending' as any,
       created_at: new Date().toISOString()
@@ -638,6 +671,7 @@ export default function BookingForm({
       phone: phone,
       special_requests: specialRequests,
       total_price: finalTotal,
+      unique_code: uniqueCode,
       status: 'Pending' as any,
       payment_status: 'Pending' as any,
       created_at: new Date().toISOString(),
@@ -675,6 +709,24 @@ export default function BookingForm({
 
     setIsUploading(true);
     setUploadError(null);
+
+    // Convert to base64 Data URLs so images are guaranteed visible even offline or if storage bucket is restricted
+    const fileToDataUrl = (file: File): Promise<string> => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+    };
+
+    let localKtpDataUrl = '';
+    let localProofDataUrl = '';
+    try {
+      localKtpDataUrl = await fileToDataUrl(ktpPhoto);
+      localProofDataUrl = await fileToDataUrl(paymentProof);
+    } catch (readErr) {
+      console.warn('FileReader error:', readErr);
+    }
 
     try {
       const timestamp = Date.now();
@@ -749,9 +801,11 @@ export default function BookingForm({
           const bookingsList = JSON.parse(existingRaw);
           const idx = bookingsList.findIndex((b: any) => b.booking_code === generatedCode);
           if (idx !== -1) {
-            bookingsList[idx].ktp_photo_url = ktpUrl;
-            bookingsList[idx].payment_proof_url = proofUrl;
-            bookingsList[idx].payment_status = 'Paid';
+            bookingsList[idx].ktp_photo_url = ktpUrl || localKtpDataUrl;
+            bookingsList[idx].payment_proof_url = proofUrl || localProofDataUrl;
+            bookingsList[idx].payment_proof = proofUrl || localProofDataUrl;
+            bookingsList[idx].payment_status = 'Waiting Verification';
+            bookingsList[idx].status = 'Waiting Verification';
             localStorage.setItem('zegan_bookings', JSON.stringify(bookingsList));
           }
         }
@@ -764,7 +818,24 @@ export default function BookingForm({
       // Graceful offline check
       const isApiKeyErr = err.message?.includes('No API key') || err.message?.includes('API key') || err.message?.includes('invalid') || err.status === 400 || err.status === 401 || err.status === 403;
       if (isApiKeyErr || err.message?.includes('Failed to fetch') || err.message?.includes('network')) {
-        console.warn('[BookingForm] Falling back to offline local success simulation.');
+        console.warn('[BookingForm] Falling back to offline local storage with base64 data.');
+        try {
+          const existingRaw = localStorage.getItem('zegan_bookings');
+          if (existingRaw) {
+            const bookingsList = JSON.parse(existingRaw);
+            const idx = bookingsList.findIndex((b: any) => b.booking_code === generatedCode);
+            if (idx !== -1) {
+              bookingsList[idx].ktp_photo_url = localKtpDataUrl;
+              bookingsList[idx].payment_proof_url = localProofDataUrl;
+              bookingsList[idx].payment_proof = localProofDataUrl;
+              bookingsList[idx].payment_status = 'Waiting Verification';
+              bookingsList[idx].status = 'Waiting Verification';
+              localStorage.setItem('zegan_bookings', JSON.stringify(bookingsList));
+            }
+          }
+        } catch (storageErr) {
+          console.warn('Error saving local fallback:', storageErr);
+        }
         setPhotosUploaded(true);
       } else {
         setUploadError(lang === 'id'
@@ -1384,9 +1455,32 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
                   </span>
                 </div>
 
+                {/* Unique Code Verification Row */}
+                <div className="flex justify-between items-center text-amber-200 bg-amber-950/40 p-2.5 rounded-lg border border-amber-800/60 my-1">
+                  <div>
+                    <span className="font-semibold flex items-center gap-1 text-xs">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      {lang === 'id' ? 'Kode Unik Otomatis' : 'Unique Verification Code'}
+                    </span>
+                    <span className="text-[10px] text-amber-300/80 block font-light">
+                      {lang === 'id' 
+                        ? `Potongan Rp${uniqueCodeDiscount.toLocaleString('id-ID')} (Kode: ${uniqueCode})`
+                        : `Auto discount Rp${uniqueCodeDiscount.toLocaleString('id-ID')} (Code: ${uniqueCode})`}
+                    </span>
+                  </div>
+                  <span className="font-bold text-amber-300 text-xs">
+                    - Rp{uniqueCodeDiscount.toLocaleString('id-ID')}
+                  </span>
+                </div>
+
                 {/* Final Total */}
                 <div className="flex justify-between items-baseline pt-4 border-t border-brand-800 text-sm">
-                  <span className="text-white font-serif font-bold text-base">{t.finalTotal}</span>
+                  <div>
+                    <span className="text-white font-serif font-bold text-base block">{t.finalTotal}</span>
+                    <span className="text-[10px] text-amber-300 block font-medium">
+                      {lang === 'id' ? '⚠️ Wajib transfer nominal persis hingga 3 digit' : '⚠️ Must transfer exact nominal to 3 digits'}
+                    </span>
+                  </div>
                   <span className="text-xl sm:text-2xl font-serif font-black text-brand-300">
                     Rp{finalTotal.toLocaleString('id-ID')}
                   </span>
@@ -1443,108 +1537,212 @@ Mohon konfirmasi ketersediaan kamarnya. Terima kasih!`;
       {/* Success Booking Receipt Lightbox Overlay */}
       <AnimatePresence>
         {bookingSuccess && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-            <div className="absolute inset-0" onClick={() => setBookingSuccess(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+            <div className="absolute inset-0" onClick={handleCloseSuccess} />
 
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-lg bg-brand-50 rounded-xl shadow-2xl overflow-y-auto max-h-[90vh] z-10 p-6 sm:p-8 border border-brand-200"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-xl bg-brand-50 rounded-2xl shadow-2xl overflow-y-auto max-h-[92vh] z-10 p-6 sm:p-8 border border-brand-200"
             >
               <div className="text-center">
-                <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto mb-3 border border-emerald-200">
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto mb-3 border border-emerald-200 shadow-xs">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
 
-                <span className="text-xs uppercase tracking-widest text-emerald-850 bg-emerald-100 border border-emerald-200/60 px-3 py-1 rounded-full inline-block font-semibold">
-                  {lang === 'id' ? 'Menunggu Pembayaran QRIS' : 'Awaiting QRIS Payment'}
+                <span className="text-xs uppercase tracking-widest text-brand-900 bg-amber-100 border border-amber-300 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-800" />
+                  {lang === 'id' ? 'Instruksi Pembayaran Kode Unik' : 'Unique Code Payment Instructions'}
                 </span>
 
-                <h3 className="text-xl font-serif font-normal text-brand-950 mt-3 leading-tight">
+                <h3 className="text-2xl font-serif font-black text-brand-950 mt-3 leading-tight">
                   {lang === 'id' ? 'Pesanan Berhasil Dibuat!' : 'Booking Created Successfully!'}
                 </h3>
 
-                <p className="text-stone-600 text-xs mt-1 leading-relaxed font-light">
+                <p className="text-stone-600 text-xs mt-1.5 leading-relaxed font-light max-w-md mx-auto">
                   {lang === 'id' 
-                    ? 'Silakan selesaikan pembayaran menggunakan QRIS statis di bawah ini.' 
-                    : 'Please complete your payment using the static QRIS below.'}
+                    ? 'Mohon selesaikan transfer atau scan QRIS sesuai nominal tepat di bawah ini agar pesanan Anda dapat diverifikasi dengan cepat.' 
+                    : 'Please complete your transfer or scan QRIS according to the exact amount below for fast booking verification.'}
                 </p>
 
-                {/* Text receipt breakdown */}
-                <div className="my-4 bg-brand-100/40 p-3 rounded-lg text-left text-xs border border-brand-200 space-y-1.5">
-                  <div className="flex justify-between border-b border-brand-200/40 pb-1.5">
-                    <span className="text-stone-500 font-semibold">Booking ID</span>
+                {/* Main Prominent Payment Box */}
+                <div className="my-5 bg-gradient-to-br from-brand-950 via-stone-900 to-brand-900 text-white p-5 sm:p-6 rounded-2xl border border-brand-800 shadow-lg text-left relative overflow-hidden">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/15 pb-4">
+                    <div>
+                      <span className="text-[11px] tracking-widest font-semibold uppercase text-amber-300 block">
+                        {lang === 'id' ? 'TOTAL PEMBAYARAN PERSIS' : 'EXACT TRANSFER AMOUNT'}
+                      </span>
+                      <div className="text-2xl sm:text-3xl font-serif font-black text-white mt-0.5 tracking-tight flex items-baseline gap-1">
+                        <span>Rp{finalTotal.toLocaleString('id-ID')}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(finalTotal.toString(), 'amount')}
+                      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md ${
+                        copiedField === 'amount'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 border border-amber-400 font-black'
+                      }`}
+                    >
+                      {copiedField === 'amount' ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>{lang === 'id' ? 'Tersalin!' : 'Copied!'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>{lang === 'id' ? 'Salin Nominal Tepat' : 'Copy Exact Amount'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Unique Code Explanatory Banner */}
+                  <div className="mt-4 bg-amber-500/20 border border-amber-400/50 rounded-xl p-3.5 text-xs text-amber-200">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <div className="font-bold text-amber-100 flex items-center gap-2 flex-wrap">
+                          <span>{lang === 'id' ? 'PENTING: Kesamaan Angka Transfer' : 'IMPORTANT: Exact Amount Required'}</span>
+                          <span className="bg-amber-400 text-stone-950 px-2 py-0.5 rounded font-mono font-black text-xs">
+                            Kode Transfer: {uniqueCode}
+                          </span>
+                          <span className="bg-brand-900 text-amber-200 border border-amber-400/40 px-2 py-0.5 rounded font-mono font-bold text-xs">
+                            Booking: {generatedCode}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-100/95 leading-relaxed font-light">
+                          {lang === 'id'
+                            ? `Nomor Booking Anda (${generatedCode}) langsung memuat angka unik ${uniqueCode}. Mohon transfer PERSIS Rp${finalTotal.toLocaleString('id-ID')} (jangan dibulatkan). Begitu angka Rp...${uniqueCode} masuk di mutasi m-banking, Admin langsung tahu itu pembayaran untuk Booking ${generatedCode}.`
+                            : `Your Booking Code (${generatedCode}) directly embeds the unique code ${uniqueCode}. Please transfer EXACTLY Rp${finalTotal.toLocaleString('id-ID')} (do not round up). Admin will instantly match this exact amount in bank mutation with Booking ${generatedCode}.`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Booking Brief Receipt */}
+                <div className="my-4 bg-brand-100/40 p-4 rounded-xl text-left text-xs border border-brand-200 space-y-2">
+                  <div className="flex justify-between border-b border-brand-200/50 pb-2">
+                    <span className="text-stone-500 font-semibold">{lang === 'id' ? 'Kode Booking' : 'Booking Code'}</span>
                     <span className="font-bold text-brand-800 font-mono text-sm">{generatedCode}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-stone-500">Kamar / Room</span>
-                    <span className="font-bold text-brand-950">{selectedRoom.name}</span>
+                    <span className="text-stone-500">{lang === 'id' ? 'Tamu & Kamar' : 'Guest & Room'}</span>
+                    <span className="font-bold text-brand-950">{fullName} • {selectedRoom.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-stone-500">Durasi / Duration</span>
-                    <span className="font-semibold text-brand-950">{nightsCount} {lang === 'id' ? 'malam' : 'nights'}</span>
-                  </div>
-                  <div className="flex justify-between border-t border-brand-200/40 pt-1.5 text-sm font-bold">
-                    <span className="font-serif text-brand-950">{lang === 'id' ? 'Total Harga' : 'Total Price'}</span>
-                    <span className="font-serif text-brand-800">Rp{finalTotal.toLocaleString('id-ID')}</span>
+                    <span className="text-stone-500">{lang === 'id' ? 'Jadwal Menginap' : 'Stay Dates'}</span>
+                    <span className="font-semibold text-brand-950">
+                      {formatDayAndDate(checkIn, checkInTime, lang)} - {formatDayAndDate(checkOut, checkOutTime, lang)} ({nightsCount} {lang === 'id' ? 'malam' : 'nights'})
+                    </span>
                   </div>
                 </div>
 
-                {/* QRIS Dynamic Display Section */}
-                {(() => {
-                  const qris = getQrisSettings();
-                  const dynamicQrUrl = getDynamicQrisImageUrl(finalTotal);
-                  return (
-                    <div className="my-4 bg-white p-4 rounded-lg border border-brand-200 shadow-xs flex flex-col items-center">
-                      <span className="text-[10px] uppercase tracking-widest text-brand-800 font-bold mb-1">
-                        {lang === 'id' ? 'SCAN QRIS ZEGAN HOMESTAY' : 'SCAN ZEGAN QRIS'}
-                      </span>
-                      <span className="text-[9px] bg-amber-50 text-amber-800 border border-amber-200/60 px-1.5 py-0.5 rounded font-black tracking-wider uppercase mb-3 flex items-center gap-1">
-                        ⚡ {lang === 'id' ? 'NOMINAL TERKUNCI OTOMATIS' : 'NOMINAL AUTOMATICALLY LOCKED'}
-                      </span>
-                      <img
-                        src={dynamicQrUrl}
-                        alt="QRIS Merchant"
-                        className="w-40 h-40 object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="text-center mt-2 space-y-1">
-                        <span className="text-[11px] font-bold text-stone-900 block font-mono">{qris.bankName}</span>
-                        <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded inline-block border border-emerald-100">
-                          {qris.accountName}
-                        </span>
+                {/* Payment Methods Section (QRIS & Bank Transfer) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-4 text-left">
+                  {/* QRIS Box */}
+                  {(() => {
+                    const qris = getQrisSettings();
+                    const dynamicQrUrl = getDynamicQrisImageUrl(finalTotal);
+                    return (
+                      <div className="bg-white p-4 rounded-xl border border-brand-200 shadow-2xs flex flex-col items-center justify-between">
+                        <div className="w-full text-center">
+                          <span className="text-[10px] uppercase tracking-widest text-brand-800 font-bold block mb-1">
+                            {lang === 'id' ? '1. SCAN QRIS' : '1. SCAN QRIS'}
+                          </span>
+                          <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-black tracking-wider uppercase inline-flex items-center gap-1 mb-2">
+                            ⚡ {lang === 'id' ? 'NOMINAL TERKUNCI' : 'LOCKED AMOUNT'}
+                          </span>
+                        </div>
+
+                        <div className="p-2 bg-stone-50 rounded-xl border border-stone-200/80 shadow-2xs my-1">
+                          <img
+                            src={dynamicQrUrl}
+                            alt="QRIS Merchant"
+                            className="w-36 h-36 object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+
+                        <div className="text-center w-full mt-2 space-y-1">
+                          <span className="text-[11px] font-bold text-stone-900 block font-mono">{qris.bankName}</span>
+                          <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded inline-block border border-emerald-100">
+                            {qris.accountName}
+                          </span>
+                          <p className="text-[10px] text-stone-500 leading-tight mt-1 font-light">
+                            {lang === 'id' ? 'Scan via GoPay, OVO, Dana, BCA, BRImo, dll.' : 'Scan via any Indonesian banking/e-wallet app.'}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-stone-500 leading-relaxed mt-2.5 text-left bg-brand-50/50 p-2.5 rounded border border-brand-200/50 font-light">
-                        {lang === 'id' 
-                          ? 'Scan QRIS di atas. Nominal pembayaran Rp' + finalTotal.toLocaleString('id-ID') + ' akan terisi otomatis secara aman tanpa perlu mengetik manual.'
-                          : 'Scan the QRIS above. The payment amount Rp' + finalTotal.toLocaleString('id-ID') + ' is automatically locked and filled securely without manual typing.'}
-                      </p>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
 
-                {/* Status indicator that WhatsApp notification was sent to Admin */}
-                <div className="mb-4 bg-emerald-50 text-emerald-800 text-[10px] px-3 py-2 rounded-lg border border-emerald-100 flex items-center justify-center gap-1.5">
-                  <span className="animate-pulse font-bold text-xs">🔔</span>
-                  <span className="text-left leading-tight font-medium">
-                    {lang === 'id'
-                      ? 'WhatsApp pemberitahuan otomatis telah dikirim langsung ke Admin.'
-                      : 'An automated WhatsApp notification has been sent directly to the Admin.'}
-                  </span>
+                  {/* Bank Transfer Box */}
+                  <div className="bg-white p-4 rounded-xl border border-brand-200 shadow-2xs flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-widest text-brand-800 font-bold block mb-2 text-center sm:text-left">
+                        {lang === 'id' ? '2. TRANSFER BANK' : '2. BANK TRANSFER'}
+                      </span>
+
+                      {/* BCA Item */}
+                      <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 mb-2.5">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-xs text-blue-900">BANK BCA</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('1234567890', 'bca')}
+                            className="text-[10px] text-brand-700 hover:text-brand-900 font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            {copiedField === 'bca' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedField === 'bca' ? (lang === 'id' ? 'Tersalin' : 'Copied') : (lang === 'id' ? 'Salin Rek' : 'Copy')}</span>
+                          </button>
+                        </div>
+                        <div className="font-mono font-bold text-stone-900 text-sm">1234 567 890</div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">a/n Zegan Homestay</div>
+                      </div>
+
+                      {/* BRI Item */}
+                      <div className="bg-stone-50 p-3 rounded-lg border border-stone-200">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-xs text-blue-700">BANK BRI</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('098765432112345', 'bri')}
+                            className="text-[10px] text-brand-700 hover:text-brand-900 font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            {copiedField === 'bri' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedField === 'bri' ? (lang === 'id' ? 'Tersalin' : 'Copied') : (lang === 'id' ? 'Salin Rek' : 'Copy')}</span>
+                          </button>
+                        </div>
+                        <div className="font-mono font-bold text-stone-900 text-sm">0987 6543 2112 345</div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">a/n Zegan Homestay</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-[10px] text-stone-500 leading-relaxed font-light">
+                      💡 {lang === 'id' ? 'Pastikan nominal transfer persis Rp' + finalTotal.toLocaleString('id-ID') : 'Ensure exact transfer amount: Rp' + finalTotal.toLocaleString('id-ID')}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Photo upload inputs and confirmation/WhatsApp CTAs */}
+                {/* Instant Confirmation Action Buttons */}
                 {(() => {
-                  const waProofMsg = `Halo Admin Zegan Homestay! Saya telah melakukan transfer pembayaran untuk pemesanan berikut:
+                  const waProofMsg = `Halo Admin Zegan Homestay! Saya telah melakukan pemesanan dan pembayaran:
 
 🏨 *KODE BOOKING: ${generatedCode}*
 ----------------------------------------
+• Nama: ${fullName}
 • Kamar: ${selectedRoom.name}
-• Atas Nama: ${fullName}
-• Total Pembayaran: Rp${finalTotal.toLocaleString('id-ID')}
+• Tanggal: ${checkIn} s/d ${checkOut} (${nightsCount} malam)
+• *Total Transfer: Rp${finalTotal.toLocaleString('id-ID')}*
+• *Kode Unik: ${uniqueCode}*
 
-Saya telah mengunggah Foto KTP dan Bukti Transfer di website. Mohon dibantu verifikasi. Terima kasih!`;
+Saya telah membayar via QRIS / Transfer Bank sesuai nominal persis. Mohon dikonfirmasi reservasi kami. Terima kasih!`;
 
                   const adminPhoneVal = (() => {
                     const envPhone = import.meta.env.VITE_ADMIN_PHONE;
@@ -1558,145 +1756,157 @@ Saya telah mengunggah Foto KTP dan Bukti Transfer di website. Mohon dibantu veri
 
                   const waUrl = `https://wa.me/${adminPhoneVal}?text=${encodeURIComponent(waProofMsg)}`;
 
-                  if (!photosUploaded) {
-                    return (
-                      <div className="mt-4 text-left border-t border-brand-200/50 pt-4 space-y-4">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-brand-900 text-center">
-                          {lang === 'id' ? 'Konfirmasi Pembayaran & KTP' : 'Confirm Payment & KTP'}
-                        </h4>
-                        <p className="text-[11px] text-stone-500 text-center font-light leading-relaxed">
-                          {lang === 'id'
-                            ? 'Wajib melampirkan Foto KTP dan Foto Bukti Transfer untuk memverifikasi pesanan Anda.'
-                            : 'You must attach your KTP Photo and Transfer Proof Photo to verify your booking.'}
-                        </p>
-
-                        {/* File Inputs Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {/* KTP Field */}
-                          <div className="bg-white p-3.5 rounded-xl border border-brand-200 shadow-2xs flex flex-col justify-between">
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
-                              {lang === 'id' ? '1. Foto KTP' : '1. KTP Photo'} <span className="text-red-500">*</span>
-                            </label>
-                            
-                            <div className="relative border border-dashed border-stone-300 rounded-lg p-2.5 text-center bg-stone-50/50 hover:bg-brand-50/20 transition-all cursor-pointer">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    setKtpPhoto(e.target.files[0]);
-                                  }
-                                }}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              />
-                              <div className="flex flex-col items-center justify-center space-y-1">
-                                <Camera className="w-4 h-4 text-stone-400" />
-                                <span className="text-[10px] font-semibold text-stone-600 truncate max-w-xs">
-                                  {ktpPhoto ? ktpPhoto.name : (lang === 'id' ? 'Pilih Gambar' : 'Choose Image')}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Payment Proof Field */}
-                          <div className="bg-white p-3.5 rounded-xl border border-brand-200 shadow-2xs flex flex-col justify-between">
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
-                              {lang === 'id' ? '2. Bukti Transfer' : '2. Transfer Proof'} <span className="text-red-500">*</span>
-                            </label>
-                            
-                            <div className="relative border border-dashed border-stone-300 rounded-lg p-2.5 text-center bg-stone-50/50 hover:bg-brand-50/20 transition-all cursor-pointer">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    setPaymentProof(e.target.files[0]);
-                                  }
-                                }}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              />
-                              <div className="flex flex-col items-center justify-center space-y-1">
-                                <Upload className="w-4 h-4 text-stone-400" />
-                                <span className="text-[10px] font-semibold text-stone-600 truncate max-w-xs">
-                                  {paymentProof ? paymentProof.name : (lang === 'id' ? 'Pilih Gambar' : 'Choose Image')}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {uploadError && (
-                          <p className="text-[10px] text-red-600 font-semibold bg-red-50 p-2.5 rounded-lg border border-red-100 text-center">
-                            ⚠️ {uploadError}
-                          </p>
-                        )}
-
-                        {/* Submit Button */}
-                        <div className="flex flex-col gap-2 pt-2">
-                          <button
-                            onClick={handlePhotoUpload}
-                            disabled={!ktpPhoto || !paymentProof || isUploading}
-                            className="bg-brand-700 hover:bg-brand-800 disabled:opacity-50 active:scale-98 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer disabled:cursor-not-allowed"
-                          >
-                            {isUploading ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>{lang === 'id' ? 'Mengunggah...' : 'Uploading...'}</span>
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span>{lang === 'id' ? 'Kirim Foto & Konfirmasi' : 'Submit Photos & Confirm'}</span>
-                              </>
-                            )}
-                          </button>
-
-                          <button
-                            onClick={handleCloseSuccess}
-                            className="bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold py-2 rounded-lg text-xs uppercase tracking-widest transition-all cursor-pointer border border-stone-300/60"
-                          >
-                            {lang === 'id' ? 'Tutup' : 'Close'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Once photos are uploaded, show success and the green WhatsApp button
                   return (
-                    <div className="mt-4 text-left border-t border-brand-200/50 pt-4 space-y-4">
-                      <div className="bg-emerald-50 text-emerald-800 text-xs p-4 rounded-xl border border-emerald-100 flex flex-col items-center gap-2">
-                        <CheckCircle2 className="w-8 h-8 text-emerald-600 animate-bounce" />
-                        <span className="font-bold text-center">
-                          {lang === 'id' ? 'Foto KTP & Bukti Transfer Berhasil Dikirim!' : 'KTP & Transfer Proof Uploaded Successfully!'}
-                        </span>
-                        <p className="text-[11px] text-emerald-700 text-center font-light leading-relaxed">
-                          {lang === 'id' 
-                            ? 'Data pemesanan Anda telah terverifikasi secara sistem. Silakan klik tombol di bawah untuk menghubungi admin WhatsApp.' 
-                            : 'Your booking has been verified in the system. Please click the button below to reach out to our admin on WhatsApp.'}
-                        </p>
-                      </div>
+                    <div className="mt-6 space-y-3">
+                      {isPaidConfirmed ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-900 text-center space-y-2">
+                          <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
+                          <div className="font-serif font-bold text-sm">
+                            {lang === 'id' ? 'Terima Kasih! Konfirmasi Pembayaran Telah Tercatat' : 'Thank You! Payment Confirmation Recorded'}
+                          </div>
+                          <p className="text-xs text-emerald-800 leading-relaxed font-light max-w-sm mx-auto">
+                            {lang === 'id'
+                              ? 'Admin akan memverifikasi mutasi kode unik secara otomatis. Anda dapat menghubungi WhatsApp kami untuk bantuan check-in.'
+                              : 'Admin will verify the unique code transfer. You may contact us on WhatsApp for check-in assistance.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row gap-2.5">
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-emerald-500 text-center"
+                          >
+                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3 1.48 4.775 1.48 5.4 0 9.795-4.39 9.799-9.78.002-2.61-1.012-5.064-2.857-6.91C16.42 2.09 13.96 1.077 11.353 1.077c-5.405 0-9.8 4.392-9.804 9.783-.001 1.91.5 3.765 1.455 5.422L2.025 21.84l5.622-1.474zM16.618 13.5c-.247-.125-1.464-.723-1.692-.806-.228-.083-.393-.125-.559.125-.166.247-.64.806-.784.969-.144.163-.29.18-.537.056-.247-.125-1.044-.385-1.988-1.227-.735-.656-1.232-1.466-1.376-1.714-.144-.247-.015-.38.11-.504.112-.112.247-.29.372-.434.124-.145.165-.248.247-.414.083-.166.04-.31-.02-.434-.06-.124-.559-1.347-.765-1.848-.2-.484-.404-.418-.559-.426-.143-.007-.31-.01-.476-.01-.166 0-.436.062-.663.31-.228.247-.868.847-.868 2.065 0 1.218.887 2.394.986 2.52.1.125 1.747 2.667 4.233 3.738.59.255 1.053.408 1.413.523.593.189 1.134.162 1.56.098.475-.07 1.464-.598 1.67-.178.206-.418.206-.775.145-.84-.061-.064-.228-.103-.475-.228z"/>
+                            </svg>
+                            <span>{lang === 'id' ? 'Konfirmasi ke WhatsApp' : 'Confirm via WhatsApp'}</span>
+                          </a>
 
-                      <div className="flex flex-col gap-2">
-                        <a
-                          href={waUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 text-sm uppercase tracking-wider cursor-pointer border border-emerald-500 text-center animate-pulse"
-                        >
-                          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3 1.48 4.775 1.48 5.4 0 9.795-4.39 9.799-9.78.002-2.61-1.012-5.064-2.857-6.91C16.42 2.09 13.96 1.077 11.353 1.077c-5.405 0-9.8 4.392-9.804 9.783-.001 1.91.5 3.765 1.455 5.422L2.025 21.84l5.622-1.474zM16.618 13.5c-.247-.125-1.464-.723-1.692-.806-.228-.083-.393-.125-.559.125-.166.247-.64.806-.784.969-.144.163-.29.18-.537.056-.247-.125-1.044-.385-1.988-1.227-.735-.656-1.232-1.466-1.376-1.714-.144-.247-.015-.38.11-.504.112-.112.247-.29.372-.434.124-.145.165-.248.247-.414.083-.166.04-.31-.02-.434-.06-.124-.559-1.347-.765-1.848-.2-.484-.404-.418-.559-.426-.143-.007-.31-.01-.476-.01-.166 0-.436.062-.663.31-.228.247-.868.847-.868 2.065 0 1.218.887 2.394.986 2.52.1.125 1.747 2.667 4.233 3.738.59.255 1.053.408 1.413.523.593.189 1.134.162 1.56.098.475-.07 1.464-.598 1.67-.178.206-.418.206-.775.145-.84-.061-.064-.228-.103-.475-.228z"/>
-                          </svg>
-                          <span>{lang === 'id' ? 'Hubungi Admin via WhatsApp' : 'Contact Admin via WhatsApp'}</span>
-                        </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsPaidConfirmed(true);
+                              logActivity('Customer', 'Customer', `Customer mengonfirmasi telah transfer ${generatedCode} (Rp${finalTotal.toLocaleString('id-ID')}).`);
+                            }}
+                            className="flex-1 bg-brand-700 hover:bg-brand-850 active:scale-98 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-brand-600"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>{lang === 'id' ? 'Saya Sudah Bayar' : 'I Have Paid'}</span>
+                          </button>
+                        </div>
+                      )}
 
+                      {/* Optional Photo Upload Accordion */}
+                      <div className="pt-2 border-t border-brand-200/60">
                         <button
-                          onClick={handleCloseSuccess}
-                          className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold py-2.5 rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer border border-stone-300"
+                          type="button"
+                          onClick={() => setShowOptionalUpload(!showOptionalUpload)}
+                          className="text-stone-500 hover:text-brand-900 text-xs font-semibold flex items-center justify-center gap-1.5 w-full py-1.5 cursor-pointer transition-colors"
                         >
-                          {lang === 'id' ? 'Tutup' : 'Close'}
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>{lang === 'id' ? 'Ingin lampirkan foto struk? (Opsional)' : 'Want to attach receipt photo? (Optional)'}</span>
+                          {showOptionalUpload ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
+
+                        {showOptionalUpload && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-3 p-4 bg-white rounded-xl border border-brand-200 text-left space-y-3"
+                          >
+                            <p className="text-[11px] text-stone-500 font-light leading-relaxed">
+                              {lang === 'id' 
+                                ? 'Upload foto bersifat opsional karena transfer Anda sudah terverifikasi dengan kode unik di mutasi bank.' 
+                                : 'Photo upload is completely optional since your payment is verified via unique code.'}
+                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {/* KTP Field */}
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
+                                  {lang === 'id' ? 'Foto KTP (Opsional)' : 'KTP Photo (Optional)'}
+                                </label>
+                                <div className="relative border border-dashed border-stone-300 rounded-lg p-2.5 text-center bg-stone-50 hover:bg-brand-50/30 transition-all cursor-pointer">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                      if (e.target.files && e.target.files[0]) {
+                                        setKtpPhoto(e.target.files[0]);
+                                      }
+                                    }}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  />
+                                  <span className="text-[10px] font-medium text-stone-600 truncate block">
+                                    {ktpPhoto ? ktpPhoto.name : (lang === 'id' ? 'Pilih Gambar' : 'Choose File')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Proof Field */}
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
+                                  {lang === 'id' ? 'Bukti Struk (Opsional)' : 'Receipt Photo (Optional)'}
+                                </label>
+                                <div className="relative border border-dashed border-stone-300 rounded-lg p-2.5 text-center bg-stone-50 hover:bg-brand-50/30 transition-all cursor-pointer">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                      if (e.target.files && e.target.files[0]) {
+                                        setPaymentProof(e.target.files[0]);
+                                      }
+                                    }}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  />
+                                  <span className="text-[10px] font-medium text-stone-600 truncate block">
+                                    {paymentProof ? paymentProof.name : (lang === 'id' ? 'Pilih Gambar' : 'Choose File')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {uploadError && (
+                              <p className="text-[10px] text-red-600 font-semibold bg-red-50 p-2 rounded border border-red-100">
+                                ⚠️ {uploadError}
+                              </p>
+                            )}
+
+                            {(ktpPhoto || paymentProof) && (
+                              <button
+                                type="button"
+                                onClick={handlePhotoUpload}
+                                disabled={isUploading}
+                                className="w-full bg-brand-700 hover:bg-brand-800 text-white font-bold py-2 rounded-lg text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                {isUploading ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>{lang === 'id' ? 'Mengunggah...' : 'Uploading...'}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="w-3.5 h-3.5" />
+                                    <span>{lang === 'id' ? 'Unggah Foto Sekarang' : 'Upload Photos'}</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </motion.div>
+                        )}
                       </div>
+
+                      {/* Close / Selesai button */}
+                      <button
+                        type="button"
+                        onClick={handleCloseSuccess}
+                        className="w-full bg-stone-200/80 hover:bg-stone-300 active:scale-98 text-stone-700 font-semibold py-3 rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer border border-stone-300/80"
+                      >
+                        {lang === 'id' ? 'Selesai & Tutup' : 'Done & Close'}
+                      </button>
                     </div>
                   );
                 })()}

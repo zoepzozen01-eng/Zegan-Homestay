@@ -23,17 +23,17 @@ export const ROOMS: Room[] = [
     weekend_price: 250000,
     roomNumbers: '1 & 2',
     description: {
-      id: 'Kamar tipe Utama yang modern dan lengkap. Dilengkapi Double Bed, AC, Smart TV, Kamar Mandi Dalam dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
-      en: 'Modern and fully equipped Standard Room Utama. Features Double Bed, AC, Smart TV, Private En-suite Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+      id: 'Kamar tipe Utama yang modern, privat, dan nyaman dengan Kamar Mandi Dalam (En-suite) & Closet Duduk. Dilengkapi Double Bed, AC, Air Mineral, dan Free WiFi.',
+      en: 'Modern, private, and comfortable Standard Room Utama with Private En-suite Bathroom & Seated Toilet. Features Double Bed, AC, Mineral Water, and Free WiFi.'
     },
     image: roomStandardUtama,
     size: '20 m²',
     capacity: 2,
     bedType: {
-      id: 'Double Bed',
-      en: 'Double Bed'
+      id: '1 Kasur Double (Double Bed)',
+      en: '1 Double Bed'
     },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    amenities: ['wifi', 'ac', 'private-bathroom'],
     rating: 4.9
   },
   {
@@ -45,17 +45,17 @@ export const ROOMS: Room[] = [
     weekend_price: 200000,
     roomNumbers: '4',
     description: {
-      id: 'Kamar Standard Madya yang menawarkan kenyamanan ekstra dengan Double Bed, AC, Smart TV bersama, Kamar Mandi bersama dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
-      en: 'Standard Room Madya offering extra comfort with Double Bed, AC, Shared Smart TV, Shared Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+      id: 'Kamar Standard Madya yang nyaman dengan Double Bed, AC, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Comfortable Standard Room Madya with Double Bed, AC, Seated Toilet, Mineral Water, and Free WiFi.'
     },
     image: roomStandardMadya,
     size: '18 m²',
     capacity: 2,
     bedType: {
-      id: 'Double Bed',
-      en: 'Double Bed'
+      id: '1 Kasur Double (Double Bed)',
+      en: '1 Double Bed'
     },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    amenities: ['wifi', 'ac'],
     rating: 4.8
   },
   {
@@ -67,17 +67,17 @@ export const ROOMS: Room[] = [
     weekend_price: 175000,
     roomNumbers: '3 & 5',
     description: {
-      id: 'Kamar Standard Pratama yang nyaman. Kamar 3 (Double bed tanpa dipan) & Kamar 5 (Twin bed sorong). Dilengkapi AC, Smart TV bersama, Kamar Mandi bersama dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
-      en: 'Comfortable Standard Room Pratama. Room 3 (Double bed without frame) & Room 5 (Twin pull-out bed). Features AC, Shared Smart TV, Shared Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+      id: 'Kamar Standard Pratama yang nyaman. Kamar 3 (Double Bed) & Kamar 5 (Twin Bed Sorong). Dilengkapi AC, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Comfortable Standard Room Pratama. Room 3 (Double Bed) & Room 5 (Twin Pull-out Bed). Features AC, Seated Toilet, Mineral Water, and Free WiFi.'
     },
     image: roomStandard,
     size: '16 m²',
     capacity: 2,
     bedType: {
-      id: 'Double Bed / Twin Bed',
-      en: 'Double Bed / Twin Bed'
+      id: 'Double Bed (Kmr 3) / Twin Bed Sorong (Kmr 5)',
+      en: 'Double Bed (Rm 3) / Twin Bed (Rm 5)'
     },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    amenities: ['wifi', 'ac'],
     rating: 4.7
   },
   {
@@ -89,17 +89,17 @@ export const ROOMS: Room[] = [
     weekend_price: 250000,
     roomNumbers: '6',
     description: {
-      id: 'Kamar Keluarga luas untuk kapasitas 4 orang. Dilengkapi Duo Double Bed, AC, Smart TV bersama, Kamar Mandi bersama dengan Water Heater, Closet Duduk, Air Mineral, dan Free WiFi.',
-      en: 'Spacious Family Room for up to 4 guests. Features Duo Double Beds, AC, Shared Smart TV, Shared Bathroom with Water Heater, Seated Toilet, Mineral Water, and Free WiFi.'
+      id: 'Kamar Keluarga luas untuk kapasitas hingga 4 orang dengan 2 Double Bed, AC, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Spacious Family Room for up to 4 guests with 2 Double Beds, AC, Seated Toilet, Mineral Water, and Free WiFi.'
     },
     image: roomFamily,
     size: '28 m²',
     capacity: 4,
     bedType: {
-      id: 'Duo Double Bed',
-      en: 'Duo Double Bed'
+      id: '2 Kasur Double (Duo Double Bed)',
+      en: '2 Double Beds'
     },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'water-heater'],
+    amenities: ['wifi', 'ac'],
     rating: 4.9
   },
   {
@@ -111,17 +111,17 @@ export const ROOMS: Room[] = [
     weekend_price: 150000,
     roomNumbers: '7 & 8',
     description: {
-      id: 'Pilihan hemat Economis Room untuk 2 orang. Dilengkapi Duo Double Bed, AC, Smart TV bersama, Kamar Mandi bersama, Closet Duduk, Air Mineral, dan Free WiFi.',
-      en: 'Budget-friendly Economis Room for 2 guests. Features Duo Double Beds, AC, Shared Smart TV, Shared Bathroom, Seated Toilet, Mineral Water, and Free WiFi.'
+      id: 'Pilihan hemat Kamar Ekonomis (Tersedia 2 Unit Kamar: Kamar No. 7 & No. 8) untuk 1-2 orang per kamar. Dilengkapi AC, Closet Duduk, Air Mineral, dan Free WiFi.',
+      en: 'Budget-friendly Economy Room (2 units available: Room No. 7 & No. 8) for up to 2 guests per room. Features AC, Seated Toilet, Mineral Water, and Free WiFi.'
     },
     image: roomEkonomi,
     size: '12 m²',
     capacity: 2,
     bedType: {
-      id: 'Duo Double Bed',
-      en: 'Duo Double Bed'
+      id: '1 Kasur (Tersedia 2 Unit: No. 7 & 8)',
+      en: '1 Bed (2 Units Available: No. 7 & 8)'
     },
-    amenities: ['wifi', 'ac', 'tv', 'shower'],
+    amenities: ['wifi', 'ac'],
     rating: 4.6
   }
 ];

@@ -18,6 +18,7 @@ import {
 import { ROOMS } from '../data';
 import InvoicePDF from './InvoicePDF';
 import { supabase } from '../lib/supabase';
+import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
 
 interface AdminPortalProps {
   lang: 'id' | 'en';
@@ -49,8 +50,9 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
   // WhatsApp Settings Form state
   const [whatsappForm, setWhatsappForm] = useState(getWhatsappSettings());
 
-  // Active viewing state (invoice overlay, detail calendar popups)
+  // Active viewing state (invoice overlay, detail calendar popups, payment proof modal)
   const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<Booking | null>(null);
+  const [viewingPaymentProof, setViewingPaymentProof] = useState<{ booking: Booking; title: string; imageUrl: string; ktpUrl?: string } | null>(null);
   const [selectedCalendarRoom, setSelectedCalendarRoom] = useState<any>(null);
 
   // Edit booking modal/state inside the room popup
@@ -260,6 +262,8 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           special_request,
           payment_status,
           booking_status,
+          payment_proof_url,
+          ktp_photo_url,
           admin_notification_sent,
           created_at,
           guests (
@@ -300,6 +304,9 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
             total_price: b.total_price || 0,
             status: b.booking_status || 'Pending',
             payment_status: b.payment_status || 'Pending',
+            payment_proof: b.payment_proof_url || null,
+            payment_proof_url: b.payment_proof_url || null,
+            ktp_photo_url: b.ktp_photo_url || null,
             created_at: b.created_at || new Date().toISOString()
           };
         });
@@ -1672,27 +1679,48 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       
       {/* 1. Welcoming staff bar */}
       <div className="bg-stone-900 text-stone-100 rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 border border-stone-850">
-        <div>
-          <span className="text-[10px] text-brand-400 uppercase tracking-widest font-extrabold block mb-1">
-            Sistem Manajemen Internal • Zegan Homestay
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-wide">
-            Selamat Datang, {adminName}
-          </h1>
-          <p className="text-xs text-stone-400 mt-1 flex items-center gap-2">
-            <span>Peran:</span>
-            <span className="bg-stone-800 text-brand-300 font-bold px-2 py-0.5 rounded-md font-mono text-[10px] uppercase border border-stone-700">
-              {currentRole}
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden shadow-lg border border-amber-400/40 p-0.5 bg-stone-950 shrink-0">
+            <img
+              src={officialLogoImg}
+              alt="Zegan Homestay & Cafe Logo"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover rounded-xl"
+            />
+          </div>
+          <div>
+            <span className="text-[10px] text-amber-400 uppercase tracking-widest font-extrabold block mb-0.5">
+              Sistem Manajemen Internal • Zegan Homestay &amp; Cafe
             </span>
-            <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            <span className="text-stone-500">Koneksi Supabase Aktif</span>
-          </p>
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-wide">
+              Selamat Datang, {adminName}
+            </h1>
+            <p className="text-xs text-stone-400 mt-1 flex items-center gap-2">
+              <span>Peran:</span>
+              <span className="bg-stone-800 text-amber-300 font-bold px-2 py-0.5 rounded-md font-mono text-[10px] uppercase border border-stone-700">
+                {currentRole}
+              </span>
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+              <span className="text-stone-500">Database Aktif</span>
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <a
+            href="/karyawan"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs uppercase tracking-widest font-extrabold px-4 py-3 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20"
+            title="Buka Layar Karyawan untuk TV / HP"
+          >
+            <span className="text-sm">📺</span>
+            <span>Layar Karyawan (TV/HP)</span>
+          </a>
+
+          <a
             href="/service-signals"
-            className="bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-400 text-xs uppercase tracking-widest font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 relative"
+            className="bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-400 text-xs uppercase tracking-widest font-bold px-4 py-3 rounded-xl transition-all flex items-center gap-2 relative"
           >
             <span className="text-sm animate-pulse">🛎️</span>
             <span>Monitor Sinyal</span>
@@ -2221,6 +2249,20 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
                             >
                               Invoice
                             </button>
+                            {(b.payment_proof || b.payment_proof_url || b.ktp_photo_url) && (
+                              <button
+                                onClick={() => setViewingPaymentProof({
+                                  booking: b,
+                                  title: 'Bukti Pembayaran & KTP',
+                                  imageUrl: b.payment_proof || b.payment_proof_url || '',
+                                  ktpUrl: b.ktp_photo_url || undefined
+                                })}
+                                className="p-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-md text-[10px] font-bold cursor-pointer transition-all"
+                                title="Lihat Foto Bukti & KTP"
+                              >
+                                Foto
+                              </button>
+                            )}
                             {(b.status === 'Paid' || b.status === 'Checked In') && (
                               <button
                                 onClick={() => handleOpenExtendBooking(b)}
@@ -2891,29 +2933,103 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
         {activeTab === 'confirm-payment' && (
           <div className="space-y-6 animate-fadeIn">
             <div className="bg-white rounded-2xl border border-brand-200 p-6 space-y-4">
-              <h3 className="font-serif font-bold text-brand-950 text-base">Reservasi Menunggu Verifikasi Pembayaran</h3>
-              <p className="text-xs text-stone-500 mt-0.5">Tinjau bukti pembayaran transfer/QRIS, lalu setujui untuk menerbitkan invoice.</p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-3">
+                <div>
+                  <h3 className="font-serif font-bold text-brand-950 text-base">Verifikasi Pembayaran Transfer & Kode Unik</h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Cocokkan nominal mutasi m-banking Anda dengan Kode Booking & Nominal Unik di bawah ini.
+                  </p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-xs text-amber-900 flex items-center gap-2 self-start sm:self-auto">
+                  <span className="font-bold">💡 Tips:</span>
+                  <span>Cari nomor 3 digit mutasi bank Anda untuk langsung menemukan nama tamunya.</span>
+                </div>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {bookings.filter(b => b.status === 'Waiting Verification' || b.status === 'Pending').length === 0 ? (
                   <div className="p-12 text-center text-stone-400 italic col-span-2">Semua pembayaran aman dan terverifikasi. Tidak ada antrean baru.</div>
                 ) : (
                   bookings.filter(b => b.status === 'Waiting Verification' || b.status === 'Pending').map((b) => (
-                    <div key={b.booking_code} className="border border-brand-100 rounded-2xl p-5 space-y-4 bg-brand-50/10">
-                      <div className="flex justify-between items-start border-b border-stone-100 pb-2.5">
+                    <div key={b.booking_code} className="border-2 border-amber-200/80 rounded-2xl p-5 space-y-4 bg-amber-50/20 shadow-xs">
+                      <div className="flex justify-between items-start border-b border-stone-200/60 pb-2.5">
                         <div>
-                          <span className="text-xs font-mono font-bold text-brand-900">{b.booking_code}</span>
-                          <h4 className="font-bold text-stone-900 text-sm mt-0.5">{b.full_name}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-bold text-brand-900 bg-brand-100 px-2 py-0.5 rounded">
+                              {b.booking_code}
+                            </span>
+                            {b.unique_code && (
+                              <span className="text-xs bg-amber-400 text-stone-950 px-2 py-0.5 rounded font-mono font-black border border-amber-500">
+                                3 Digit: {b.unique_code}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="font-bold text-stone-900 text-base mt-1">{b.full_name}</h4>
+                          <span className="text-[11px] text-stone-500 font-mono">{b.phone}</span>
                         </div>
-                        <span className="text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold">
+                        <span className="text-[10px] bg-amber-100 border border-amber-300 text-amber-900 px-2.5 py-1 rounded-full uppercase tracking-wider font-extrabold">
                           {b.status}
                         </span>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      {/* Highlighted Match Box for Admin */}
+                      <div className="bg-stone-900 text-white p-3.5 rounded-xl border border-stone-800 space-y-1">
+                        <span className="text-[10px] uppercase tracking-wider text-amber-300 font-semibold block">
+                          NOMINAL MUTASI YANG HARUS MASUK:
+                        </span>
+                        <div className="text-xl font-mono font-black text-amber-400 flex items-center justify-between">
+                          <span>Rp{(b.total_price || 0).toLocaleString('id-ID')}</span>
+                          <span className="text-xs font-sans font-normal text-stone-300 bg-stone-800 px-2 py-0.5 rounded">
+                            Cocokkan di m-Banking
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500 bg-white p-3 rounded-xl border border-stone-200">
                         <div><span className="block text-[10px] text-stone-400">Unit Kamar:</span><span className="font-bold text-stone-800">{b.room_name} ({b.room_number || 'A-1'})</span></div>
-                        <div><span className="block text-[10px] text-stone-400">Total Tagihan:</span><span className="font-bold text-brand-850 font-mono">Rp{(b.total_price || 0).toLocaleString('id-ID')}</span></div>
+                        <div><span className="block text-[10px] text-stone-400">Durasi:</span><span className="font-bold text-stone-800">{b.nights || 1} Malam</span></div>
                         <div className="col-span-2"><span className="block text-[10px] text-stone-400">Masa Tinggal:</span><span className="font-bold text-stone-850">{b.check_in} s/d {b.check_out}</span></div>
+                      </div>
+
+                      {/* Photo Preview Button & Thumbnails */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          {b.payment_proof || b.payment_proof_url ? (
+                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-stone-100 border border-stone-200 shrink-0">
+                              <img
+                                src={b.payment_proof || b.payment_proof_url || ''}
+                                alt="Bukti"
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-stone-100 border border-stone-200 flex items-center justify-center text-xs text-stone-400 shrink-0">
+                              💳
+                            </div>
+                          )}
+                          <div>
+                            <span className="text-[11px] font-bold text-stone-800 block">
+                              Bukti Transfer {b.ktp_photo_url ? '& KTP' : ''}
+                            </span>
+                            <span className="text-[10px] text-stone-400 block">
+                              {b.payment_proof || b.payment_proof_url ? 'Foto sudah diunggah' : 'Belum upload foto'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setViewingPaymentProof({
+                            booking: b,
+                            title: 'Bukti Pembayaran & KTP',
+                            imageUrl: b.payment_proof || b.payment_proof_url || '',
+                            ktpUrl: b.ktp_photo_url || undefined
+                          })}
+                          className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          👁️ <span>Lihat Foto</span>
+                        </button>
                       </div>
 
                       <div className="flex gap-2 pt-2 border-t">
@@ -3578,6 +3694,130 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
           lang={lang}
         />
       )}
+
+      {/* Payment & KTP Proof Photo Lightbox Modal */}
+      <AnimatePresence>
+        {viewingPaymentProof && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+            <div className="absolute inset-0" onClick={() => setViewingPaymentProof(null)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative bg-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl border border-stone-200 z-10 max-h-[90vh] overflow-y-auto space-y-4"
+            >
+              <div className="flex justify-between items-start border-b pb-3">
+                <div>
+                  <span className="text-[10px] font-mono font-bold text-brand-900 bg-brand-50 px-2 py-0.5 rounded uppercase tracking-wider">
+                    {viewingPaymentProof.booking.booking_code}
+                  </span>
+                  <h3 className="font-serif font-bold text-stone-900 text-base mt-1">
+                    {viewingPaymentProof.title} • {viewingPaymentProof.booking.full_name}
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Kamar: {viewingPaymentProof.booking.room_name} ({viewingPaymentProof.booking.room_number || 'A-1'}) • Total: Rp{(viewingPaymentProof.booking.total_price || 0).toLocaleString('id-ID')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewingPaymentProof(null)}
+                  className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer rounded-lg hover:bg-stone-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Photo Display Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. Payment Proof Photo */}
+                <div className="space-y-2 bg-stone-50 p-3 rounded-2xl border border-stone-200">
+                  <div className="flex justify-between items-center text-xs font-bold text-stone-700">
+                    <span>💳 Foto Bukti Pembayaran</span>
+                  </div>
+                  {viewingPaymentProof.imageUrl ? (
+                    <div className="rounded-xl overflow-hidden bg-black/5 border flex items-center justify-center max-h-72">
+                      <img
+                        src={viewingPaymentProof.imageUrl}
+                        alt="Bukti Transfer"
+                        className="w-full h-auto max-h-72 object-contain hover:scale-105 transition-transform"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-stone-400 text-xs italic bg-stone-100 rounded-xl">
+                      Foto bukti transfer belum diunggah.
+                    </div>
+                  )}
+                  {viewingPaymentProof.imageUrl && (
+                    <a
+                      href={viewingPaymentProof.imageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-brand-700 hover:text-brand-900 font-bold block text-center mt-1"
+                    >
+                      Buka Gambar Penuh ↗
+                    </a>
+                  )}
+                </div>
+
+                {/* 2. KTP Photo */}
+                <div className="space-y-2 bg-stone-50 p-3 rounded-2xl border border-stone-200">
+                  <div className="flex justify-between items-center text-xs font-bold text-stone-700">
+                    <span>🪪 Foto KTP / Identitas</span>
+                  </div>
+                  {viewingPaymentProof.ktpUrl ? (
+                    <div className="rounded-xl overflow-hidden bg-black/5 border flex items-center justify-center max-h-72">
+                      <img
+                        src={viewingPaymentProof.ktpUrl}
+                        alt="Foto KTP"
+                        className="w-full h-auto max-h-72 object-contain hover:scale-105 transition-transform"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-stone-400 text-xs italic bg-stone-100 rounded-xl">
+                      Foto KTP belum diunggah.
+                    </div>
+                  )}
+                  {viewingPaymentProof.ktpUrl && (
+                    <a
+                      href={viewingPaymentProof.ktpUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-brand-700 hover:text-brand-900 font-bold block text-center mt-1"
+                    >
+                      Buka Gambar Penuh ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Verifikasi / Tolak right from modal */}
+              {viewingPaymentProof.booking.status === 'Waiting Verification' && (
+                <div className="flex gap-3 pt-2 border-t">
+                  <button
+                    onClick={() => {
+                      handleConfirmPaid(viewingPaymentProof.booking.booking_code);
+                      setViewingPaymentProof(null);
+                    }}
+                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md"
+                  >
+                    ✓ Verifikasi Lunas & Setujui
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleCancelBooking(viewingPaymentProof.booking.booking_code);
+                      setViewingPaymentProof(null);
+                    }}
+                    className="py-3 px-5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                  >
+                    Tolak
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Stay Extension (Perpanjangan Menginap) Modal Overlay */}
       <AnimatePresence>

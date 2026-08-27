@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X, Languages, PhoneCall, Search } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../data';
+import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
 
 interface NavbarProps {
   lang: Language;
@@ -55,12 +56,32 @@ export default function Navbar({ lang, setLang, onBookClick, onLookupClick, view
             setView('home');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }} 
-          className="flex items-center gap-2 group cursor-pointer bg-transparent border-none text-left"
+          className="flex items-center gap-3 group cursor-pointer bg-transparent border-none text-left"
         >
-          <span className="text-2xl font-bold font-serif flex items-center gap-1.5 transition-colors">
-            <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">🏡</span>
-            <span className={isScrolled ? 'text-brand-800' : 'text-stone-50'}>
-              {t.brand}
+          <span className="flex items-center gap-2.5 transition-colors">
+            <span className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl overflow-hidden shadow-md transition-all group-hover:scale-105 border flex items-center justify-center p-0.5 ${
+              isScrolled 
+                ? 'bg-amber-50 border-amber-300 shadow-stone-900/10' 
+                : 'bg-black/60 border-white/30 shadow-black/50'
+            }`}>
+              <img
+                src={officialLogoImg}
+                alt="Zegan Homestay & Cafe Logo"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover rounded-lg"
+              />
+            </span>
+            <span className="flex flex-col">
+              <span className={`font-serif text-lg sm:text-xl font-black tracking-wider uppercase leading-none ${
+                isScrolled ? 'text-stone-900' : 'text-white'
+              }`}>
+                ZEGAN <span className={isScrolled ? 'text-amber-800 font-serif font-light italic' : 'text-amber-300 font-serif font-light italic'}>HOMESTAY</span>
+              </span>
+              <span className={`text-[10px] tracking-widest font-semibold uppercase mt-0.5 ${
+                isScrolled ? 'text-stone-600' : 'text-stone-200'
+              }`}>
+                Homestay &amp; Cafe • Yogyakarta
+              </span>
             </span>
           </span>
         </button>

@@ -42,21 +42,21 @@ const getRoomImage = (name: string): string => {
 
 const getRoomMetaByName = (name: string) => {
   const norm = name.toLowerCase().trim();
-  if (norm.includes('economy') || norm.includes('ekonomi')) {
+  if (norm.includes('economy') || norm.includes('ekonomi') || norm.includes('economis')) {
     return {
       size: '12 m²',
-      bedType: { id: '1 Kasur Single', en: '1 Single Bed' },
-      amenities: ['wifi', 'garden-view'],
+      bedType: { id: '1 Kasur (Tersedia 2 Unit: No. 7 & 8)', en: '1 Bed (2 Units Available: No. 7 & 8)' },
+      amenities: ['wifi', 'ac'],
       rating: 4.6,
-      capacity: 1
+      capacity: 2
     };
   }
-  if (norm.includes('pratama') || norm.includes('standard room') && !norm.includes('madya') && !norm.includes('utama')) {
+  if (norm.includes('utama')) {
     return {
-      size: '16 m²',
+      size: '20 m²',
       bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
-      rating: 4.7,
+      amenities: ['wifi', 'ac', 'private-bathroom'],
+      rating: 4.9,
       capacity: 2
     };
   }
@@ -64,34 +64,34 @@ const getRoomMetaByName = (name: string) => {
     return {
       size: '18 m²',
       bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
+      amenities: ['wifi', 'ac'],
       rating: 4.8,
+      capacity: 2
+    };
+  }
+  if (norm.includes('pratama') || (norm.includes('standard') && !norm.includes('madya') && !norm.includes('utama'))) {
+    return {
+      size: '16 m²',
+      bedType: { id: 'Double Bed / Twin Bed', en: 'Double Bed / Twin Bed' },
+      amenities: ['wifi', 'ac'],
+      rating: 4.7,
       capacity: 2
     };
   }
   if (norm.includes('family')) {
     return {
       size: '28 m²',
-      bedType: { id: '1 Kasur Double & 1 Kasur Single', en: '1 Double Bed & 1 Single Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view', 'fridge'],
+      bedType: { id: '2 Kasur Double (Duo Double Bed)', en: '2 Double Beds' },
+      amenities: ['wifi', 'ac'],
       rating: 4.9,
-      capacity: 3
-    };
-  }
-  if (norm.includes('utama')) {
-    return {
-      size: '20 m²',
-      bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
-      rating: 4.9,
-      capacity: 2
+      capacity: 4
     };
   }
   if (norm.includes('rumah')) {
     return {
       size: '45 m²',
       bedType: { id: '2 Kasur Double', en: '2 Double Beds' },
-      amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view', 'fridge'],
+      amenities: ['wifi', 'ac', 'shower', 'garden-view', 'fridge'],
       rating: 5.0,
       capacity: 6
     };
@@ -100,7 +100,7 @@ const getRoomMetaByName = (name: string) => {
   return {
     size: '16 m²',
     bedType: { id: '1 Kasur Double', en: '1 Double Bed' },
-    amenities: ['wifi', 'ac', 'tv', 'shower', 'garden-view'],
+    amenities: ['wifi', 'ac'],
     rating: 4.8,
     capacity: 2
   };
@@ -169,13 +169,14 @@ export default function Rooms({ lang, onSelectRoom, onBookRoom }: RoomsProps) {
           const mappedRooms: Room[] = data.map((row: any) => {
             const meta = getRoomMetaByName(row.name);
             const image = getRoomImage(row.name);
+            const matchingStatic = ROOMS.find(r => r.name.toLowerCase().trim() === String(row.name).toLowerCase().trim());
             return {
               id: String(row.id),
               name: row.name,
               price: Number(row.weekday_price),
               weekendPrice: Number(row.weekend_price) || Number(row.weekday_price),
               weekend_price: Number(row.weekend_price) || Number(row.weekday_price),
-              description: {
+              description: matchingStatic ? matchingStatic.description : {
                 id: row.description || '',
                 en: row.description || ''
               },

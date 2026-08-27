@@ -34,7 +34,7 @@ export function normalizeRoomCategory(roomNameOrId: string): 'utama' | 'pratama'
   if (norm.includes('family') || norm === '63a30aee-0c4b-49ce-8c5e-7ff4c9077481') {
     return 'family';
   }
-  if (norm.includes('ekonomi') || norm.includes('economy') || norm === '90ced547-d6b1-4089-9617-8972d45a5ad3') {
+  if (norm.includes('ekonomi') || norm.includes('economy') || norm.includes('economis') || norm === 'ekonomi' || norm === '90ced547-d6b1-4089-9617-8972d45a5ad3') {
     return 'ekonomi';
   }
   if (norm.includes('rumah') || norm === 'e8f31a0b-052a-4b29-8a93-06e8013fa623') {

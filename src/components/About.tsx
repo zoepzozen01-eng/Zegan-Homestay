@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { MapPin, Phone, Clock, Compass, ShieldAlert, Heart, Navigation } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../data';
+import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
 
 interface AboutProps {
   lang: Language;
@@ -25,13 +26,30 @@ export default function About({ lang }: AboutProps) {
           
           {/* Left Column: Traditional Story (7 Cols) */}
           <div className="lg:col-span-7 space-y-6">
-            <span className="text-xs font-semibold uppercase tracking-widest text-brand-700 border border-brand-200/80 px-4 py-1.5 rounded-full bg-brand-100 inline-block">
-              HERITAGE & ARCHITECTURE
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-widest text-brand-700 border border-brand-200/80 px-4 py-1.5 rounded-full bg-brand-100 inline-block">
+                HERITAGE &amp; ARCHITECTURE
+              </span>
+            </div>
             
-            <h2 className="text-3xl sm:text-4xl font-serif font-normal text-brand-950 leading-tight">
-              {t.aboutTitle}
-            </h2>
+            <div className="flex items-start gap-4">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden shadow-lg border border-amber-300 p-0.5 bg-amber-50 shrink-0">
+                <img
+                  src={officialLogoImg}
+                  alt="Zegan Homestay & Cafe Emblem"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover rounded-xl"
+                />
+              </div>
+              <div>
+                <h2 className="text-2xl sm:text-4xl font-serif font-normal text-brand-950 leading-tight">
+                  {t.aboutTitle}
+                </h2>
+                <span className="text-xs font-serif italic text-amber-800 font-medium block mt-1">
+                  Zegan Homestay &amp; Cafe • Sentolo, Kulon Progo
+                </span>
+              </div>
+            </div>
 
             <div className="w-12 h-[2px] bg-brand-300 mt-2 mb-4" />
 

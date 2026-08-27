@@ -82,9 +82,12 @@ export interface Booking {
   phone: string;
   special_requests?: string;
   total_price: number;
+  unique_code?: number;
   status: BookingStatus;
   payment_status: PaymentStatus;
   payment_proof?: string | null;
+  payment_proof_url?: string | null;
+  ktp_photo_url?: string | null;
   payment_date?: string | null;
   check_out_date?: string | null;
   created_at: string;
