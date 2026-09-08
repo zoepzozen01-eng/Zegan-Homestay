@@ -12,6 +12,8 @@ import snackBakwan from './assets/images/snack_bakwan_1782631886482.jpg';
 import snackMendoan from './assets/images/snack_mendoan_1782631898593.jpg';
 import snackPisangGoreng from './assets/images/snack_pisang_goreng_1782631914027.jpg';
 import drinkWedangUwuh from './assets/images/drink_wedang_uwuh_1782631928385.jpg';
+import zeganExterior from './assets/images/zegan_exterior_1782631309135.jpg';
+import zeganHeroView from './assets/images/zegan_hero_view_1782628350361.jpg';
 
 export const ROOMS: Room[] = [
   {
@@ -492,8 +494,6 @@ export const ADD_ONS: AddOn[] = [
   }
 ];
 
-import zeganExterior from './assets/images/zegan_exterior_1782631309135.jpg';
-
 export const INITIAL_REVIEWS: Review[] = [
   {
     id: 'rev-1',
@@ -525,42 +525,47 @@ export const GALLERY_IMAGES = [
   {
     url: zeganExterior,
     category: 'grounds',
-    title: { id: 'Tampak Depan Villa & Kolam', en: 'Villa Front & Pool View' }
+    title: { id: 'Tampak Depan Homestay & Pendopo', en: 'Homestay Front & Joglo Pavilion' }
   },
   {
     url: roomStandardUtama,
     category: 'rooms',
-    title: { id: 'Detail Kamar Standard Utama', en: 'Standard Room Utama Details' }
+    title: { id: 'Kamar Standard Utama', en: 'Standard Room Utama' }
+  },
+  {
+    url: zeganExterior,
+    category: 'pool',
+    title: { id: 'Kolam Renang & Area Terbuka', en: 'Swimming Pool & Outdoor Area' }
+  },
+  {
+    url: zeganHeroView,
+    category: 'cafe',
+    title: { id: 'Pemandangan Asri Sekitar Cafe', en: 'Lush Scenery Around Cafe' }
+  },
+  {
+    url: roomFamily,
+    category: 'rooms',
+    title: { id: 'Kamar Family Room', en: 'Spacious Family Room' }
+  },
+  {
+    url: zeganHeroView,
+    category: 'grounds',
+    title: { id: 'Suasana Alam Sekitar Homestay', en: 'Surrounding Natural Landscape' }
+  },
+  {
+    url: zeganExterior,
+    category: 'cafe',
+    title: { id: 'Pemandangan Area Santai Cafe', en: 'Scenic Cafe Relaxation Area' }
+  },
+  {
+    url: roomStandardMadya,
+    category: 'rooms',
+    title: { id: 'Kamar Standard Madya', en: 'Standard Room Madya' }
   },
   {
     url: roomStandard,
     category: 'rooms',
     title: { id: 'Kamar Standard Tradisional', en: 'Traditional Standard Room' }
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?q=80&w=800',
-    category: 'cafe',
-    title: { id: 'Sudut Kopi di Cafe Zegan', en: 'Zegan Cafe Coffee Corner' }
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?q=80&w=800',
-    category: 'pool',
-    title: { id: 'Kolam Renang Berlatar Hijau', en: 'Swimming Pool with Green Landscape' }
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=800',
-    category: 'cafe',
-    title: { id: 'Sajian Makanan Tradisional', en: 'Traditional Cuisine Serving' }
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=800',
-    category: 'grounds',
-    title: { id: 'Pemandangan Bukit Menoreh', en: 'Menoreh Hills View' }
-  },
-  {
-    url: roomFamily,
-    category: 'rooms',
-    title: { id: 'Family Room Nyaman', en: 'Spacious Family Room' }
   }
 ];
 

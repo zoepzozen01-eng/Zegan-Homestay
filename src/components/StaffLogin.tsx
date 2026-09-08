@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Lock, User, Eye, EyeOff, ShieldAlert, UserPlus, LogIn, ClipboardList } from 'lucide-react';
 import { authenticateStaff, signUpStaff } from '../services/authService';
-import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
+import ZeganLogo from './ZeganLogo';
 
 interface StaffLoginProps {
   lang: 'id' | 'en';
@@ -94,14 +94,9 @@ export default function StaffLogin({ lang, onLoginSuccess, onGoHome }: StaffLogi
         transition={{ duration: 0.5 }}
         className="w-full max-w-md bg-stone-850 border border-stone-800 rounded-3xl p-8 sm:p-10 shadow-2xl relative z-10 text-stone-100"
       >
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-xl border border-amber-400/40 p-0.5 bg-stone-950 mx-auto mb-4">
-            <img
-              src={officialLogoImg}
-              alt="Zegan Homestay & Cafe"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover rounded-xl"
-            />
+        <div className="text-center mb-8 flex flex-col items-center">
+          <div className="mb-4">
+            <ZeganLogo variant="mark" size="lg" isLight={true} />
           </div>
           <h2 className="text-2xl font-serif font-bold text-white tracking-wide">
             {isSignUp 

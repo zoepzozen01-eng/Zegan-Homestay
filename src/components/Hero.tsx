@@ -5,6 +5,7 @@ import { Language } from '../types';
 import { ROOMS, TRANSLATIONS } from '../data';
 import { checkRoomAvailability, getLiveBookingsAndRooms } from '../lib/roomAvailability';
 import heroImage from '../assets/images/zegan_exterior_1782631309135.jpg';
+import { ZeganEmblem } from './ZeganLogo';
 
 interface HeroProps {
   lang: Language;
@@ -117,45 +118,35 @@ export default function Hero({
       {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center pt-8 pb-20">
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: -15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="flex flex-col items-center justify-center mb-5 gap-2"
+          transition={{ duration: 0.7 }}
+          className="flex flex-col items-center justify-center mb-4"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold tracking-widest uppercase border border-white/20 shadow-lg">
-            <span className="text-white/80">✦</span>
-            <span>KULON PROGO • DAERAH ISTIMEWA YOGYAKARTA</span>
-            <span className="text-white/80">✦</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 backdrop-blur-md text-stone-200 text-xs font-medium tracking-wide border border-white/15 shadow-md">
+            <ZeganEmblem className="w-3.5 h-3.5" isLight={true} />
+            <span>Kulon Progo, D.I. Yogyakarta</span>
           </div>
         </motion.div>
 
         <motion.h1
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif font-black text-white mb-6 tracking-tight leading-tight max-w-5xl mx-auto drop-shadow-2xl"
+          transition={{ duration: 0.8, delay: 0.15 }}
+          className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-serif font-medium text-white mb-3.5 tracking-tight leading-tight max-w-4xl mx-auto drop-shadow-sm"
         >
-          <span className="block text-xl sm:text-2xl md:text-3xl font-serif font-normal tracking-[0.2em] text-stone-200 uppercase mb-2">
+          <span className="block text-xs sm:text-sm md:text-base font-sans font-normal text-stone-300 tracking-wide mb-1.5">
             {lang === 'id' ? 'Penginapan Tradisional Jawa' : 'Traditional Javanese Heritage'}
           </span>
-          <span className="text-white tracking-wider font-black">
-            ZEGAN
-          </span>{' '}
-          <span className="font-light italic text-stone-100">
-            Homestay &amp; Cafe
-          </span>
-          <div className="flex items-center justify-center gap-3 mt-4">
-            <div className="h-px w-16 sm:w-28 bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
-            <span className="text-white/80 text-xs sm:text-sm tracking-widest">✦ ❖ ✦</span>
-            <div className="h-px w-16 sm:w-28 bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
-          </div>
+          <span className="font-semibold text-white">ZEGAN</span>{' '}
+          <span className="font-normal text-stone-100">Homestay &amp; Cafe</span>
         </motion.h1>
 
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 0.4 }}
-          className="text-stone-200 text-sm sm:text-base md:text-lg mb-10 max-w-2xl mx-auto font-normal leading-relaxed tracking-wide drop-shadow-md"
+          transition={{ duration: 0.8, delay: 0.3 }}
+          className="text-stone-200/90 text-sm sm:text-base mb-8 max-w-2xl mx-auto font-normal leading-relaxed drop-shadow-sm"
         >
           {t.heroSubtitle}
         </motion.p>
@@ -170,7 +161,7 @@ export default function Hero({
           <form onSubmit={handleSubmit} className="space-y-4 text-left">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <label className="block text-xs font-bold text-brand-950/60 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <label className="block text-xs font-semibold text-brand-950/70 mb-2 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-brand-600" />
                   {t.checkIn}
                 </label>
@@ -186,7 +177,7 @@ export default function Hero({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-brand-950/60 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <label className="block text-xs font-semibold text-brand-950/70 mb-2 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-brand-600" />
                   {t.checkOut}
                 </label>
@@ -202,7 +193,7 @@ export default function Hero({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-brand-950/60 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <label className="block text-xs font-semibold text-brand-950/70 mb-2 flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5 text-brand-600" />
                   {t.guestsCount}
                 </label>
@@ -224,7 +215,7 @@ export default function Hero({
                 <button
                   id="hero-search-submit"
                   type="submit"
-                  className="w-full bg-brand-700 hover:bg-brand-850 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wider cursor-pointer hover:scale-101"
+                  className="w-full bg-brand-750 hover:bg-brand-850 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 text-sm tracking-wide cursor-pointer hover:scale-101"
                 >
                   <span>{t.checkAvailability}</span>
                   <ArrowRight className="w-4 h-4" />

@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import { MapPin, Phone, Clock, Compass, ShieldAlert, Heart, Navigation } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../data';
-import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
+import ZeganLogo from './ZeganLogo';
 
 interface AboutProps {
   lang: Language;
@@ -33,14 +33,7 @@ export default function About({ lang }: AboutProps) {
             </div>
             
             <div className="flex items-start gap-4">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden shadow-lg border border-amber-300 p-0.5 bg-amber-50 shrink-0">
-                <img
-                  src={officialLogoImg}
-                  alt="Zegan Homestay & Cafe Emblem"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover rounded-xl"
-                />
-              </div>
+              <ZeganLogo variant="mark" size="lg" isLight={false} />
               <div>
                 <h2 className="text-2xl sm:text-4xl font-serif font-normal text-brand-950 leading-tight">
                   {t.aboutTitle}

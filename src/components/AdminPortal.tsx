@@ -18,7 +18,7 @@ import {
 import { ROOMS } from '../data';
 import InvoicePDF from './InvoicePDF';
 import { supabase } from '../lib/supabase';
-import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
+import ZeganLogo from './ZeganLogo';
 
 interface AdminPortalProps {
   lang: 'id' | 'en';
@@ -1680,14 +1680,7 @@ export default function AdminPortal({ lang, staffUser, initialTab, onLogout, onT
       {/* 1. Welcoming staff bar */}
       <div className="bg-stone-900 text-stone-100 rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 border border-stone-850">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden shadow-lg border border-amber-400/40 p-0.5 bg-stone-950 shrink-0">
-            <img
-              src={officialLogoImg}
-              alt="Zegan Homestay & Cafe Logo"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover rounded-xl"
-            />
-          </div>
+          <ZeganLogo variant="mark" size="lg" isLight={true} />
           <div>
             <span className="text-[10px] text-amber-400 uppercase tracking-widest font-extrabold block mb-0.5">
               Sistem Manajemen Internal • Zegan Homestay &amp; Cafe

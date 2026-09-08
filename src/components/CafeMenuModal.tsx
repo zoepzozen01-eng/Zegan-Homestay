@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Coffee, Sparkles, Flame, Check, Minus, Plus, 
-  ShoppingBag, Send, CheckCircle2, User, MapPin, CreditCard, ClipboardList
+  ShoppingBag, Send, CheckCircle2, User, MapPin, CreditCard, ClipboardList,
+  UtensilsCrossed, Cookie, CupSoda
 } from 'lucide-react';
 import { CafeItem, Language, ServiceSignal } from '../types';
 import { CAFE_ITEMS, TRANSLATIONS } from '../data';
@@ -449,9 +450,11 @@ export default function CafeMenuModal({ isOpen, onClose, lang }: CafeMenuModalPr
                     </div>
 
                     {/* Menu grid */}
-                    <div className="grid sm:grid-cols-2 gap-4 max-h-[52vh] overflow-y-auto pr-1">
+                    <div className="grid sm:grid-cols-2 gap-3.5 max-h-[52vh] overflow-y-auto pr-1">
                       {filteredItems.map((item) => {
                         const currentQty = cart[item.id] || 0;
+                        const isDrink = item.category === 'beverage' || item.category === 'coffee' || item.category === 'traditional';
+                        const isSnack = item.category === 'snack';
 
                         return (
                           <motion.div
@@ -459,71 +462,79 @@ export default function CafeMenuModal({ isOpen, onClose, lang }: CafeMenuModalPr
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             key={item.id}
-                            className="flex gap-3 p-3 bg-white rounded-xl border border-brand-150 hover:border-brand-300 transition-all relative overflow-hidden group shadow-2xs"
+                            className="flex flex-col justify-between p-3.5 bg-white rounded-xl border border-brand-150 hover:border-brand-300 hover:shadow-sm transition-all relative overflow-hidden group shadow-2xs"
                           >
                             {item.isBestSeller && (
-                              <span className="absolute top-0 left-0 bg-brand-700 text-brand-100 text-[8px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-br-lg flex items-center gap-0.5">
+                              <span className="absolute top-0 right-0 bg-brand-700 text-brand-100 text-[8px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-bl-lg flex items-center gap-0.5">
                                 <Flame className="w-2.5 h-2.5 text-brand-300 fill-brand-300" />
                                 {t.bestSeller}
                               </span>
                             )}
 
-                            <img 
-                              referrerPolicy="no-referrer"
-                              src={item.image} 
-                              alt={item.name} 
-                              className="w-18 h-18 sm:w-22 sm:h-22 object-cover rounded-lg shrink-0 bg-stone-50 border border-brand-100/50"
-                            />
-
-                            <div className="flex flex-col justify-between flex-1 min-w-0">
-                              <div>
-                                <div className="flex justify-between items-start gap-1.5">
-                                  <h4 className="font-bold text-stone-900 text-xs sm:text-sm leading-tight truncate">{item.name}</h4>
-                                  <span className="text-[10px] sm:text-xs font-bold text-brand-800 font-mono whitespace-nowrap bg-brand-50 px-1.5 py-0.5 rounded border border-brand-150">
+                            <div>
+                              <div className="flex items-start gap-2.5 mb-1.5">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                  isDrink 
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200/60' 
+                                    : isSnack 
+                                    ? 'bg-orange-100 text-orange-800 border border-orange-200/60' 
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200/60'
+                                }`}>
+                                  {isDrink ? (
+                                    <Coffee className="w-4 h-4" />
+                                  ) : isSnack ? (
+                                    <Cookie className="w-4 h-4" />
+                                  ) : (
+                                    <UtensilsCrossed className="w-4 h-4" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1 pr-12">
+                                  <h4 className="font-bold text-stone-900 text-sm leading-tight">{item.name}</h4>
+                                  <span className="text-[11px] font-extrabold text-brand-800 font-mono inline-block mt-0.5">
                                     Rp{item.price.toLocaleString('id-ID')}
                                   </span>
                                 </div>
-                                <p className="text-[10px] sm:text-xs text-stone-500 mt-1 line-clamp-2 font-light leading-snug">
-                                  {item.description[lang]}
-                                </p>
                               </div>
 
-                              <div className="flex items-center justify-between gap-2 mt-2">
-                                <div className="flex items-center gap-1 text-[9px] text-brand-600 font-bold uppercase tracking-wider">
-                                  <Check className="w-3 h-3 text-brand-500 shrink-0" />
-                                  <span>Zegan Cafe</span>
-                                </div>
+                              <p className="text-[11px] text-stone-500 font-light leading-relaxed pl-10.5">
+                                {item.description[lang]}
+                              </p>
+                            </div>
 
-                                {/* Add to Cart Buttons */}
-                                {currentQty > 0 ? (
-                                  <div className="flex items-center bg-brand-50 border border-brand-200 rounded-lg p-0.5 gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateQty(item.id, -1)}
-                                      className="p-1 rounded-md bg-white hover:bg-stone-100 text-stone-700 transition-colors cursor-pointer"
-                                    >
-                                      <Minus className="w-3 h-3" />
-                                    </button>
-                                    <span className="font-mono font-bold text-xs w-4 text-center">{currentQty}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateQty(item.id, 1)}
-                                      className="p-1 rounded-md bg-white hover:bg-brand-100 text-brand-800 transition-colors cursor-pointer"
-                                    >
-                                      <Plus className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                ) : (
+                            <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-stone-100 pl-10.5">
+                              <span className="text-[9px] text-stone-400 font-semibold uppercase tracking-wider">
+                                {item.category === 'main' ? 'Makanan Utama' : item.category === 'snack' ? 'Camilan' : 'Minuman'}
+                              </span>
+
+                              {/* Add to Cart Buttons */}
+                              {currentQty > 0 ? (
+                                <div className="flex items-center bg-brand-50 border border-brand-200 rounded-lg p-0.5 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateQty(item.id, -1)}
+                                    className="p-1 rounded-md bg-white hover:bg-stone-100 text-stone-700 transition-colors cursor-pointer"
+                                  >
+                                    <Minus className="w-3 h-3" />
+                                  </button>
+                                  <span className="font-mono font-bold text-xs w-4 text-center">{currentQty}</span>
                                   <button
                                     type="button"
                                     onClick={() => handleUpdateQty(item.id, 1)}
-                                    className="px-2.5 py-1 bg-brand-700 hover:bg-brand-850 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-3xs"
+                                    className="p-1 rounded-md bg-white hover:bg-brand-100 text-brand-800 transition-colors cursor-pointer"
                                   >
                                     <Plus className="w-3 h-3" />
-                                    <span>{localTexts.addToCart}</span>
                                   </button>
-                                )}
-                              </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateQty(item.id, 1)}
+                                  className="px-2.5 py-1 bg-brand-750 hover:bg-brand-850 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-3xs"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>{localTexts.addToCart}</span>
+                                </button>
+                              )}
                             </div>
                           </motion.div>
                         );

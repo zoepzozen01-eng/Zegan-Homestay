@@ -1,7 +1,7 @@
 import { Compass, Mail, Phone, MapPin, Heart, Share2 } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../data';
-import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
+import ZeganLogo from './ZeganLogo';
 
 interface FooterProps {
   lang: Language;
@@ -18,24 +18,7 @@ export default function Footer({ lang }: FooterProps) {
           
           {/* Logo & Pitch */}
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg border border-amber-400/30 p-0.5 bg-stone-900 shrink-0">
-                <img
-                  src={officialLogoImg}
-                  alt="Zegan Homestay & Cafe Logo"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover rounded-lg"
-                />
-              </div>
-              <div>
-                <h3 className="text-lg font-serif font-black text-white leading-tight">
-                  ZEGAN <span className="text-amber-300 font-light italic font-serif">HOMESTAY</span>
-                </h3>
-                <span className="text-[10px] tracking-widest text-brand-300/80 uppercase font-medium block">
-                  Homestay &amp; Cafe
-                </span>
-              </div>
-            </div>
+            <ZeganLogo size="md" isLight={true} />
             <p className="text-brand-200/80 text-xs sm:text-sm leading-relaxed font-light">
               {t.footerText}
             </p>

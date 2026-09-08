@@ -17,7 +17,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ServiceSignal, Booking, Language } from '../types';
-import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
+import ZeganLogo from './ZeganLogo';
 
 interface StaffPortalProps {
   lang?: Language;
@@ -399,14 +399,7 @@ export default function StaffPortal({ onGoHome }: StaffPortalProps) {
         
         {/* Left: Branding & Status */}
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl overflow-hidden shadow-lg border border-amber-400/40 p-0.5 bg-stone-950 shrink-0">
-            <img
-              src={officialLogoImg}
-              alt="Zegan Homestay & Cafe"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover rounded-lg"
-            />
-          </div>
+          <ZeganLogo variant="mark" size="md" isLight={true} />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-serif font-bold text-white tracking-wide">
@@ -498,69 +491,69 @@ export default function StaffPortal({ onGoHome }: StaffPortalProps) {
         </div>
       </header>
 
-      {/* 2. MAIN 3-COLUMN UNIFIED DASHBOARD */}
-      <main className="max-w-[1600px] w-full mx-auto px-3 sm:px-6 py-3 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3.5 lg:overflow-hidden">
+      {/* 2. MAIN 2-COLUMN DASHBOARD (CHECK-IN & CHECK-OUT) */}
+      <main className="max-w-[1600px] w-full mx-auto px-3 sm:px-6 py-3 flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 lg:overflow-hidden">
         
         {/* ========================================================= */}
-        {/* KOLOM 1 (45% Lebar TV): KEDATANGAN TAMU HARI INI (CHECK-IN) */}
+        {/* KOLOM 1: KEDATANGAN TAMU HARI INI (CHECK-IN) */}
         {/* ========================================================= */}
-        <section className="lg:col-span-5 bg-stone-900/70 rounded-2xl p-3.5 sm:p-4 border-2 border-emerald-500/40 flex flex-col justify-between shadow-xl overflow-hidden">
+        <section className="bg-stone-900/70 rounded-2xl p-4 sm:p-5 border-2 border-emerald-500/40 flex flex-col justify-between shadow-xl overflow-hidden">
           
           {/* Header */}
-          <div className="flex justify-between items-center pb-2.5 mb-2.5 border-b border-stone-800 shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm font-bold border border-emerald-500/30">
+          <div className="flex justify-between items-center pb-3 mb-3 border-b border-stone-800 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-base font-bold border border-emerald-500/30">
                 🚪
               </span>
               <div>
                 <h2 className="text-sm sm:text-base font-serif font-black text-white tracking-wide flex items-center gap-2">
                   <span>KEDATANGAN TAMU (CHECK-IN)</span>
-                  <span className="bg-emerald-500 text-stone-950 font-mono text-[11px] font-bold px-2 py-0.2 rounded-full">
+                  <span className="bg-emerald-500 text-stone-950 font-mono text-[11px] font-bold px-2 py-0.5 rounded-full">
                     {todayBookings.checkIns.length}
                   </span>
                 </h2>
               </div>
             </div>
-            <span className="text-[11px] text-emerald-400 font-extrabold uppercase bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-800">
+            <span className="text-[11px] text-emerald-400 font-extrabold uppercase bg-emerald-950/80 px-2.5 py-1 rounded-md border border-emerald-800">
               🔊 Bunyi Saat Tiba
             </span>
           </div>
 
           {/* List Content */}
-          <div className="flex-1 space-y-2.5 overflow-y-auto pr-1 max-h-[450px] lg:max-h-none">
+          <div className="flex-1 space-y-3 overflow-y-auto pr-1 max-h-[500px] lg:max-h-none">
             {todayBookings.checkIns.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-stone-500 bg-stone-950/40 rounded-xl border border-stone-800/80">
-                <CheckCircle2 className="w-10 h-10 text-emerald-500/40 mb-2" />
+              <div className="h-full min-h-[220px] flex flex-col items-center justify-center p-6 text-center text-stone-500 bg-stone-950/40 rounded-xl border border-stone-800/80">
+                <CheckCircle2 className="w-12 h-12 text-emerald-500/40 mb-3" />
                 <p className="text-sm font-bold text-stone-300">Belum Ada Check-In Baru Hari Ini</p>
-                <p className="text-[11px] text-stone-500 mt-0.5">Layar akan otomatis berbunyi bel saat ada pesanan atau check-in baru.</p>
+                <p className="text-xs text-stone-500 mt-1">Layar akan otomatis berbunyi bel saat ada tamu baru tiba atau booking masuk.</p>
               </div>
             ) : (
               todayBookings.checkIns.map((b, idx) => (
                 <div 
                   key={idx}
-                  className="bg-stone-950 p-3.5 rounded-xl border-2 border-emerald-500/60 shadow-md flex items-center justify-between gap-3 hover:border-emerald-400 transition-colors"
+                  className="bg-stone-950 p-4 rounded-xl border-2 border-emerald-500/60 shadow-md flex items-center justify-between gap-4 hover:border-emerald-400 transition-colors"
                 >
                   {/* Big Room Box */}
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-emerald-500 text-stone-950 font-serif font-black text-xl sm:text-2xl flex flex-col items-center justify-center shadow-lg shrink-0 leading-tight">
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-xl bg-emerald-500 text-stone-950 font-serif font-black text-2xl sm:text-3xl flex flex-col items-center justify-center shadow-lg shrink-0 leading-tight">
                     <span className="text-[9px] uppercase tracking-tighter opacity-80 -mb-1">KAMAR</span>
                     {b.room_number || 'A-1'}
                   </div>
 
                   {/* Guest Info */}
                   <div className="flex-1 min-w-0">
-                    <span className="text-[11px] font-bold text-emerald-400 block truncate">
+                    <span className="text-xs font-bold text-emerald-400 block truncate">
                       {b.room_name}
                     </span>
-                    <h3 className="text-base sm:text-lg font-black text-amber-400 leading-tight truncate">
+                    <h3 className="text-base sm:text-lg font-black text-amber-400 leading-tight truncate mt-0.5">
                       👤 {b.full_name}
                     </h3>
-                    <div className="flex items-center gap-3 text-[11px] text-stone-300 mt-0.5">
+                    <div className="flex items-center gap-3 text-xs text-stone-300 mt-1">
                       <span className="font-semibold">👥 {b.guests || 2} Orang</span>
                       <span>•</span>
                       <span>Menginap s/d <strong className="text-white">{b.check_out}</strong></span>
                     </div>
                     {b.special_requests && (
-                      <p className="text-[10px] text-stone-400 italic truncate mt-0.5">
+                      <p className="text-[11px] text-stone-400 italic truncate mt-1">
                         Catatan: "{b.special_requests}"
                       </p>
                     )}
@@ -568,10 +561,10 @@ export default function StaffPortal({ onGoHome }: StaffPortalProps) {
 
                   {/* Status Action Label */}
                   <div className="text-right shrink-0">
-                    <span className="px-2.5 py-1 bg-emerald-950 text-emerald-300 border border-emerald-600 rounded-lg text-[10px] sm:text-xs font-black block">
+                    <span className="px-3 py-1.5 bg-emerald-950 text-emerald-300 border border-emerald-600 rounded-lg text-xs font-black block">
                       SIAPKAN
                     </span>
-                    <span className="text-[9px] text-stone-500 block mt-1 font-mono">
+                    <span className="text-[10px] text-stone-400 block mt-1 font-mono">
                       Masuk 14:00
                     </span>
                   </div>
@@ -580,159 +573,88 @@ export default function StaffPortal({ onGoHome }: StaffPortalProps) {
             )}
           </div>
 
-          <div className="pt-2 text-[10px] text-stone-500 border-t border-stone-800/80 shrink-0 flex justify-between">
+          <div className="pt-2.5 text-xs text-stone-400 border-t border-stone-800/80 shrink-0 flex justify-between">
             <span>Standar Check-In: Mulai 14.00 WIB</span>
-            <span className="text-emerald-400">Audio Notifikasi Otomatis</span>
+            <span className="text-emerald-400 font-medium">Audio Notifikasi Otomatis Aktif</span>
           </div>
 
         </section>
 
         {/* ========================================================= */}
-        {/* KOLOM 2 (35% Lebar TV): PERMINTAAN & PESANAN DARI KAMAR */}
+        {/* KOLOM 2: TAMU PULANG (CHECK-OUT) */}
         {/* ========================================================= */}
-        <section className="lg:col-span-4 bg-stone-900/70 rounded-2xl p-3.5 sm:p-4 border-2 border-amber-500/50 flex flex-col justify-between shadow-xl overflow-hidden">
+        <section className="bg-stone-900/70 rounded-2xl p-4 sm:p-5 border-2 border-rose-500/40 flex flex-col justify-between shadow-xl overflow-hidden">
           
           {/* Header */}
-          <div className="flex justify-between items-center pb-2.5 mb-2.5 border-b border-stone-800 shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center text-sm font-bold border border-amber-500/30">
-                🛎️
-              </span>
-              <div>
-                <h2 className="text-sm sm:text-base font-serif font-black text-white tracking-wide flex items-center gap-2">
-                  <span>PESANAN & PANGGILAN</span>
-                  <span className="bg-amber-500 text-stone-950 font-mono text-[11px] font-bold px-2 py-0.2 rounded-full">
-                    {signals.length}
-                  </span>
-                </h2>
-              </div>
-            </div>
-            <span className="text-[11px] text-amber-400 font-extrabold uppercase bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-800">
-              🔊 Bunyi Bel
-            </span>
-          </div>
-
-          {/* List Content */}
-          <div className="flex-1 space-y-2.5 overflow-y-auto pr-1 max-h-[450px] lg:max-h-none">
-            {signals.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-stone-500 bg-stone-950/40 rounded-xl border border-stone-800/80">
-                <CheckCircle2 className="w-10 h-10 text-amber-500/40 mb-2" />
-                <p className="text-sm font-bold text-stone-300">Tidak Ada Pesanan Kamar</p>
-                <p className="text-[11px] text-stone-500 mt-0.5">Layar akan berbunyi lonceng otomatis saat tamu memesan makanan Cafe / minta bantuan.</p>
-              </div>
-            ) : (
-              signals.map((sig) => {
-                const isFood = sig.type === 'food';
-                return (
-                  <div
-                    key={sig.id}
-                    className="bg-stone-950 p-3.5 rounded-xl border-2 border-amber-500 shadow-md flex flex-col justify-between gap-2 relative overflow-hidden"
-                  >
-                    {/* Top Row */}
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-11 h-11 rounded-lg bg-amber-500 text-stone-950 font-serif font-black text-xl flex items-center justify-center shrink-0">
-                          {sig.room_number}
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-amber-400 font-extrabold uppercase tracking-wider block">
-                            KAMAR NO. {sig.room_number}
-                          </span>
-                          <h4 className="text-xs sm:text-sm font-bold text-white truncate">
-                            {sig.guest_name}
-                          </h4>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-[10px] font-mono font-bold text-stone-400 block">
-                          {new Date(sig.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black uppercase mt-0.5 ${
-                          isFood ? 'bg-amber-950 text-amber-300' : 'bg-blue-950 text-blue-300'
-                        }`}>
-                          {isFood ? '🍔 Makanan' : '💬 Layanan'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Order Details in Big Bold Text */}
-                    <div className="bg-stone-900/90 p-2.5 rounded-lg border border-stone-800">
-                      <p className="text-xs sm:text-sm font-bold text-stone-100 leading-snug whitespace-pre-line">
-                        {sig.details}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="pt-2 text-[10px] text-stone-500 border-t border-stone-800/80 shrink-0 flex justify-between">
-            <span>Audio Bel Lonceng: Aktif</span>
-            <span className="text-amber-400">Sinkron Otomatis</span>
-          </div>
-
-        </section>
-
-        {/* ========================================================= */}
-        {/* KOLOM 3 (20% Lebar TV): TAMU PULANG (CHECK-OUT) */}
-        {/* ========================================================= */}
-        <section className="lg:col-span-3 bg-stone-900/70 rounded-2xl p-3.5 sm:p-4 border border-stone-800 flex flex-col justify-between shadow-xl overflow-hidden">
-          
-          {/* Header */}
-          <div className="flex justify-between items-center pb-2.5 mb-2.5 border-b border-stone-800 shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center text-sm font-bold border border-rose-500/30">
+          <div className="flex justify-between items-center pb-3 mb-3 border-b border-stone-800 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center text-base font-bold border border-rose-500/30">
                 🧹
               </span>
               <div>
                 <h2 className="text-sm sm:text-base font-serif font-black text-white tracking-wide flex items-center gap-2">
-                  <span>CHECK-OUT HARI INI</span>
-                  <span className="bg-rose-500 text-stone-950 font-mono text-[11px] font-bold px-2 py-0.2 rounded-full">
+                  <span>TAMU PULANG (CHECK-OUT HARI INI)</span>
+                  <span className="bg-rose-500 text-stone-950 font-mono text-[11px] font-bold px-2 py-0.5 rounded-full">
                     {todayBookings.checkOuts.length}
                   </span>
                 </h2>
               </div>
             </div>
+            <span className="text-[11px] text-rose-400 font-extrabold uppercase bg-rose-950/80 px-2.5 py-1 rounded-md border border-rose-800">
+              Maks 12:00 WIB
+            </span>
           </div>
 
           {/* List Content */}
-          <div className="flex-1 space-y-2 overflow-y-auto pr-1 max-h-[450px] lg:max-h-none">
+          <div className="flex-1 space-y-3 overflow-y-auto pr-1 max-h-[500px] lg:max-h-none">
             {todayBookings.checkOuts.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-stone-500 bg-stone-950/40 rounded-xl border border-stone-800/80">
-                <p className="text-xs font-semibold text-stone-400">Tidak Ada Tamu Pulang Hari Ini</p>
+              <div className="h-full min-h-[220px] flex flex-col items-center justify-center p-6 text-center text-stone-500 bg-stone-950/40 rounded-xl border border-stone-800/80">
+                <CheckCircle2 className="w-12 h-12 text-rose-500/40 mb-3" />
+                <p className="text-sm font-bold text-stone-300">Tidak Ada Tamu Pulang Hari Ini</p>
+                <p className="text-xs text-stone-500 mt-1">Daftar kamar yang harus dibersihkan akan otomatis muncul saat tiba tanggal check-out.</p>
               </div>
             ) : (
               todayBookings.checkOuts.map((b, idx) => (
                 <div 
                   key={idx}
-                  className="bg-stone-950 p-2.5 rounded-xl border border-stone-800 flex items-center justify-between gap-2"
+                  className="bg-stone-950 p-4 rounded-xl border-2 border-rose-500/50 shadow-md flex items-center justify-between gap-4 hover:border-rose-400 transition-colors"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-rose-950 text-rose-300 border border-rose-800 font-bold text-sm flex items-center justify-center shrink-0">
-                      {b.room_number || 'A-1'}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-xs font-bold text-white truncate">
-                        {b.full_name}
-                      </h4>
-                      <span className="text-[10px] text-stone-400 block truncate">
-                        {b.room_name}
-                      </span>
+                  {/* Big Room Box */}
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-xl bg-rose-600 text-white font-serif font-black text-2xl sm:text-3xl flex flex-col items-center justify-center shadow-lg shrink-0 leading-tight">
+                    <span className="text-[9px] uppercase tracking-tighter opacity-80 -mb-1">KAMAR</span>
+                    {b.room_number || 'A-1'}
+                  </div>
+
+                  {/* Guest Info */}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-bold text-rose-400 block truncate">
+                      {b.room_name}
+                    </span>
+                    <h3 className="text-base sm:text-lg font-black text-white leading-tight truncate mt-0.5">
+                      👤 {b.full_name}
+                    </h3>
+                    <div className="flex items-center gap-3 text-xs text-stone-300 mt-1">
+                      <span>Check-In: <strong className="text-stone-200">{b.check_in}</strong></span>
                     </div>
                   </div>
 
-                  <span className="px-2 py-1 bg-amber-950 text-amber-300 border border-amber-800 rounded-md text-[9px] font-black shrink-0 text-center">
-                    BERSIHKAN<br/>SETELAH 12.00
-                  </span>
+                  {/* Action */}
+                  <div className="text-right shrink-0">
+                    <span className="px-3 py-1.5 bg-rose-950 text-rose-300 border border-rose-600 rounded-lg text-xs font-black block text-center">
+                      BERSIHKAN
+                    </span>
+                    <span className="text-[10px] text-stone-400 block mt-1 font-mono">
+                      Maks 12.00
+                    </span>
+                  </div>
                 </div>
               ))
             )}
           </div>
 
-          <div className="pt-2 text-[10px] text-stone-500 border-t border-stone-800/80 shrink-0 text-center">
-            Maksimal Check-Out: 12.00 WIB
+          <div className="pt-2.5 text-xs text-stone-400 border-t border-stone-800/80 shrink-0 flex justify-between">
+            <span>Maksimal Check-Out: 12.00 WIB</span>
+            <span className="text-rose-400 font-medium">Housekeeping Ready</span>
           </div>
 
         </section>

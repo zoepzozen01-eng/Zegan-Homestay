@@ -1,7 +1,8 @@
 import React from 'react';
+import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
 
 interface ZeganLogoProps {
-  variant?: 'mark' | 'full' | 'badge';
+  variant?: 'mark' | 'full' | 'badge' | 'image';
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   isLight?: boolean;
@@ -9,13 +10,12 @@ interface ZeganLogoProps {
 
 /**
  * Pure SVG Logo Vector of ZEGAN HOMESTAY & CAFE
- * Designed with precise organic lines:
- * - Traditional Gable House Roof
+ * Designed with precise organic lines that blend into the earthy Javanese theme:
+ * - Traditional Gable House Roof (Joglo/Limasan silhouette)
  * - Foliage/Leaves sprouting on top-right (Green leaf)
  * - Welcoming human figure with open arms inside
  * - Flowing aesthetic base
- * - High-end typography
- * Seamlessly blends with both Light/Amber and Dark/Atmospheric themes without boxed backgrounds.
+ * Perfectly adapts its stroke and fills to the ambient theme.
  */
 export function ZeganEmblem({ 
   className = "w-8 h-8", 
@@ -24,10 +24,10 @@ export function ZeganEmblem({
   className?: string; 
   isLight?: boolean 
 }) {
-  const primaryStroke = isLight ? "#fef3c7" : "#292524"; // Warm ivory on dark / Stone-800 on light
-  const secondaryStroke = isLight ? "#fde68a" : "#44403c";
-  const leafColor = isLight ? "#86efac" : "#15803d"; // Vibrant spring green or rich forest green
-  const accentGold = isLight ? "#f59e0b" : "#b45309"; // Warm amber/gold
+  const primaryStroke = isLight ? "#fef3c7" : "#3f2c1d"; // Warm amber-ivory / Deep teak-stone
+  const secondaryStroke = isLight ? "#fde68a" : "#784b28";
+  const leafColor = isLight ? "#86efac" : "#2d6a4f"; // Natural foliage green
+  const accentGold = isLight ? "#fbbf24" : "#b45309"; // Warm golden amber
 
   return (
     <svg 
@@ -80,7 +80,6 @@ export function ZeganEmblem({
       </g>
 
       {/* 3. Welcoming Human Figure (Guest Hospitality Silhouette) */}
-      {/* Head */}
       <circle 
         cx="60" 
         cy="48" 
@@ -118,6 +117,51 @@ export function ZeganEmblem({
   );
 }
 
+/**
+ * Image representation with blending filters that blend naturally into light or dark surfaces
+ */
+export function ZeganBlendedImage({
+  size = 'md',
+  isLight = false,
+  className = ''
+}: {
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  isLight?: boolean;
+  className?: string;
+}) {
+  const sizeClasses = {
+    sm: 'w-8 h-8 rounded-lg',
+    md: 'w-10 h-10 rounded-xl',
+    lg: 'w-14 h-14 rounded-2xl',
+    xl: 'w-20 h-20 rounded-2xl'
+  };
+
+  return (
+    <div className={`relative overflow-hidden shrink-0 transition-all duration-300 ${sizeClasses[size]} ${
+      isLight
+        ? 'bg-stone-900/60 ring-1 ring-amber-400/30 shadow-md shadow-black/30'
+        : 'bg-amber-100/60 ring-1 ring-amber-900/15 shadow-sm'
+    } ${className}`}>
+      <img
+        src={officialLogoImg}
+        alt="Zegan Homestay & Cafe"
+        referrerPolicy="no-referrer"
+        className={`w-full h-full object-cover transition-opacity duration-300 ${
+          isLight 
+            ? 'opacity-90 contrast-105 brightness-95' 
+            : 'mix-blend-multiply opacity-95 contrast-110'
+        }`}
+      />
+      {/* Soft warm vignette overlay for seamless ambient blending */}
+      <div className={`absolute inset-0 pointer-events-none rounded-[inherit] ${
+        isLight 
+          ? 'ring-1 ring-inset ring-amber-300/20' 
+          : 'ring-1 ring-inset ring-amber-800/10'
+      }`} />
+    </div>
+  );
+}
+
 export default function ZeganLogo({ 
   variant = 'full', 
   size = 'md', 
@@ -131,16 +175,28 @@ export default function ZeganLogo({
     xl: 'w-16 h-16 sm:w-20 sm:h-20'
   };
 
+  if (variant === 'image') {
+    return <ZeganBlendedImage size={size} isLight={isLight} className={className} />;
+  }
+
   if (variant === 'mark') {
-    return <ZeganEmblem className={`${emblemSizes[size]} ${className}`} isLight={isLight} />;
+    return (
+      <div className={`relative flex items-center justify-center rounded-2xl transition-all duration-300 ${
+        isLight 
+          ? 'bg-stone-900/40 p-1.5 ring-1 ring-white/10' 
+          : 'bg-amber-900/5 p-1.5 ring-1 ring-amber-900/10'
+      } ${className}`}>
+        <ZeganEmblem className={emblemSizes[size]} isLight={isLight} />
+      </div>
+    );
   }
 
   if (variant === 'badge') {
     return (
       <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-2xl backdrop-blur-md transition-all ${
         isLight 
-          ? 'bg-stone-900/60 border border-stone-700/60 text-stone-100 shadow-lg shadow-black/20' 
-          : 'bg-amber-50/80 border border-amber-200/80 text-stone-900 shadow-sm'
+          ? 'bg-stone-900/60 ring-1 ring-stone-700/60 text-stone-100 shadow-lg shadow-black/20' 
+          : 'bg-amber-50/90 ring-1 ring-amber-200/80 text-stone-900 shadow-sm'
       } ${className}`}>
         <ZeganEmblem className="w-6 h-6" isLight={isLight} />
         <div className="flex flex-col text-left">
@@ -157,11 +213,11 @@ export default function ZeganLogo({
 
   return (
     <div className={`flex items-center gap-2.5 sm:gap-3 select-none ${className}`}>
-      {/* Emblem with subtle organic glow/tint that blends directly with surrounding UI */}
-      <div className={`relative flex items-center justify-center p-1.5 rounded-2xl transition-all duration-300 ${
+      {/* Emblem with subtle organic tint that blends smoothly into surrounding container */}
+      <div className={`relative flex items-center justify-center p-1.5 rounded-2xl transition-all duration-300 shrink-0 ${
         isLight 
-          ? 'bg-stone-950/40 border border-white/10 shadow-inner' 
-          : 'bg-amber-100/50 border border-amber-200/60 shadow-sm'
+          ? 'bg-stone-950/40 ring-1 ring-white/10 shadow-inner' 
+          : 'bg-amber-900/5 ring-1 ring-amber-900/10'
       }`}>
         <ZeganEmblem className={emblemSizes[size]} isLight={isLight} />
       </div>

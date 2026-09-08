@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Search, Calendar, Users, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, ArrowRight, Upload, Check, CreditCard, ExternalLink, Image as ImageIcon, Coffee, Minus, Plus, Send, Sparkles, MessageSquare } from 'lucide-react';
+import { Search, Calendar, Users, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, ArrowRight, Upload, Check, CreditCard, ExternalLink, Image as ImageIcon, Coffee, Minus, Plus, Send, Sparkles, MessageSquare, UtensilsCrossed, Cookie } from 'lucide-react';
 import { Booking, BookingStatus, PaymentStatus, ServiceSignal } from '../types';
 import { getQrisSettings, getWhatsappSettings, logActivity, getDynamicQrisImageUrl } from '../services/adminService';
 import { CAFE_ITEMS } from '../data';
 import InvoicePDF from './InvoicePDF';
-import officialLogoImg from '../assets/images/zegan_official_logo_1787811644426.jpg';
 
 interface CustomerPortalProps {
   lang: 'id' | 'en';
@@ -794,12 +793,26 @@ export default function CustomerPortal({ lang }: CustomerPortalProps) {
                                 const currentQty = foodQuantities[qtyKey] || 0;
 
                                 return (
-                                  <div key={item.id} className="flex items-center justify-between p-2 rounded-lg bg-brand-50/50 border border-brand-100 text-xs">
-                                    <div className="flex items-center gap-2">
-                                      <img src={item.image} alt={item.name} className="w-10 h-10 object-cover rounded-md bg-stone-100 border" />
+                                  <div key={item.id} className="flex items-center justify-between p-2.5 rounded-lg bg-brand-50/50 border border-brand-100 text-xs">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                        item.category === 'beverage' || item.category === 'coffee' || item.category === 'traditional'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : item.category === 'snack'
+                                          ? 'bg-orange-100 text-orange-800'
+                                          : 'bg-emerald-100 text-emerald-800'
+                                      }`}>
+                                        {item.category === 'beverage' || item.category === 'coffee' || item.category === 'traditional' ? (
+                                          <Coffee className="w-4 h-4" />
+                                        ) : item.category === 'snack' ? (
+                                          <Cookie className="w-4 h-4" />
+                                        ) : (
+                                          <UtensilsCrossed className="w-4 h-4" />
+                                        )}
+                                      </div>
                                       <div>
-                                        <p className="font-bold text-stone-900">{item.name}</p>
-                                        <p className="text-[10px] text-stone-500">Rp{item.price.toLocaleString('id-ID')}</p>
+                                        <p className="font-bold text-stone-900 leading-tight">{item.name}</p>
+                                        <p className="text-[10px] font-mono text-brand-800 font-semibold mt-0.5">Rp{item.price.toLocaleString('id-ID')}</p>
                                       </div>
                                     </div>
 
